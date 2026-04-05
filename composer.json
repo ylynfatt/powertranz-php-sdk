@@ -6,6 +6,7 @@
     "keywords": ["payment", "powertranz", "3ds", "gateway", "caribbean", "tokenisation"],
     "require": {
         "php": ">=8.1",
+        "ext-curl": "*",
         "brick/money": "^0.11.2",
         "psr/http-client": "^1.0",
         "psr/http-factory": "^1.0",
