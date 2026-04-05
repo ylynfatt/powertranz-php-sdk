@@ -1,0 +1,16 @@
+{
+    "TransactionIdentifier": "txn-sale-declined-001",
+    "OrderIdentifier": "order-789",
+    "IsoResponseCode": "05",
+    "ResponseCode": "D0005",
+    "ResponseMessage": "Do not honour",
+    "AuthorizationCode": null,
+    "ReferenceNumber": "REF003",
+    "CardBrand": "VISA",
+    "TotalAmount": 49.99,
+    "CurrencyCode": "840",
+    "TransactionType": 2,
+    "Approved": false,
+    "PanToken": null,
+    "SpiToken": null
+}

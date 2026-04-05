@@ -1,0 +1,16 @@
+{
+    "TransactionIdentifier": "txn-auth-001",
+    "OrderIdentifier": "order-123",
+    "IsoResponseCode": "00",
+    "ResponseCode": "A0000",
+    "ResponseMessage": "Approved",
+    "AuthorizationCode": "AUTH123",
+    "ReferenceNumber": "REF001",
+    "CardBrand": "VISA",
+    "TotalAmount": 29.99,
+    "CurrencyCode": "840",
+    "TransactionType": 1,
+    "Approved": true,
+    "PanToken": null,
+    "SpiToken": null
+}

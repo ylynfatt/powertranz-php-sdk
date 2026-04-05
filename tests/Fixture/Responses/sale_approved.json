@@ -1,0 +1,16 @@
+{
+    "TransactionIdentifier": "txn-sale-001",
+    "OrderIdentifier": "order-456",
+    "IsoResponseCode": "00",
+    "ResponseCode": "A0000",
+    "ResponseMessage": "Approved",
+    "AuthorizationCode": "SALE123",
+    "ReferenceNumber": "REF002",
+    "CardBrand": "MASTERCARD",
+    "TotalAmount": 99.50,
+    "CurrencyCode": "840",
+    "TransactionType": 2,
+    "Approved": true,
+    "PanToken": null,
+    "SpiToken": null
+}

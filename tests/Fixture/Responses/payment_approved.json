@@ -1,0 +1,16 @@
+{
+    "TransactionIdentifier": "txn-3ds-001",
+    "OrderIdentifier": "order-3ds-123",
+    "IsoResponseCode": "00",
+    "ResponseCode": "A0000",
+    "ResponseMessage": "Approved",
+    "AuthorizationCode": "3DS456",
+    "ReferenceNumber": "REF004",
+    "CardBrand": "VISA",
+    "TotalAmount": 75.00,
+    "CurrencyCode": "840",
+    "TransactionType": 2,
+    "Approved": true,
+    "PanToken": null,
+    "SpiToken": null
+}

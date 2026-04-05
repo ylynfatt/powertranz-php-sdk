@@ -1,0 +1,10 @@
+{
+    "TransactionIdentifier": "txn-auth-001",
+    "OrderIdentifier": "order-123",
+    "IsoResponseCode": "00",
+    "ResponseCode": "A0000",
+    "ResponseMessage": "Approved",
+    "ReferenceNumber": "REF008",
+    "TransactionType": 5,
+    "Approved": true
+}

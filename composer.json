@@ -1,0 +1,46 @@
+{
+    "name": "powertranz/powertranz-php-sdk",
+    "description": "Official PHP SDK for the PowerTranz payment gateway — 3DS, tokenisation, HPP, recurring billing",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["payment", "powertranz", "3ds", "gateway", "caribbean", "tokenisation"],
+    "require": {
+        "php": ">=8.1",
+        "psr/http-client": "^1.0",
+        "psr/http-message": "^1.1|^2.0",
+        "psr/http-factory": "^1.0",
+        "psr/log": "^1.1|^2.0|^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "nyholm/psr7": "^1.8",
+        "guzzlehttp/guzzle": "^7.8",
+        "phpstan/phpstan": "^1.10",
+        "friendsofphp/php-cs-fixer": "^3.48"
+    },
+    "suggest": {
+        "guzzlehttp/guzzle": "Recommended PSR-18 HTTP client (implements psr/http-client)",
+        "nyholm/psr7": "Recommended PSR-7 message factory",
+        "symfony/http-client": "Alternative PSR-18 HTTP client"
+    },
+    "autoload": {
+        "psr-4": {
+            "PowerTranz\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PowerTranz\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    },
+    "minimum-stability": "stable"
+}
