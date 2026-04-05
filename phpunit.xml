@@ -21,12 +21,12 @@
         </include>
     </source>
 
-    <coverage>
+    <!--<coverage>
         <report>
             <html outputDirectory="coverage"/>
             <text outputFile="php://stdout" showUncoveredFiles="false"/>
         </report>
-    </coverage>
+    </coverage>-->
 
     <php>
         <env name="POWERTRANZ_ENV" value="sandbox"/>
