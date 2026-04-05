@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace PowerTranz\Tests\Unit\Service;
 
+use Brick\Money\Money;
 use PHPUnit\Framework\TestCase;
 use PowerTranz\Config\Configuration;
-use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Model\Request\CaptureRequest;
 use PowerTranz\Model\Request\RefundRequest;
 use PowerTranz\Model\Request\VoidRequest;
@@ -33,7 +33,7 @@ final class TransactionServiceTest extends TestCase
     {
         $this->httpClient->addResponse(200, ResponseFixture::load('capture_approved'));
 
-        $result = $this->service->capture(new CaptureRequest('txn-auth-001', 29.99));
+        $result = $this->service->capture(new CaptureRequest('txn-auth-001', Money::of('29.99', 'USD')));
 
         self::assertInstanceOf(CaptureResponse::class, $result);
         self::assertTrue($result->approved);
@@ -45,8 +45,7 @@ final class TransactionServiceTest extends TestCase
 
         $result = $this->service->refund(new RefundRequest(
             transactionIdentifier: 'txn-sale-001',
-            totalAmount:           29.99,
-            currencyCode:          CurrencyCode::USD,
+            totalAmount:           Money::of('29.99', 'USD'),
             orderIdentifier:       'order-123',
         ));
 
@@ -68,7 +67,7 @@ final class TransactionServiceTest extends TestCase
     {
         $this->httpClient->addResponse(200, ResponseFixture::load('capture_approved'));
 
-        $this->service->capture(new CaptureRequest('txn-001', 50.00));
+        $this->service->capture(new CaptureRequest('txn-001', Money::of('50.00', 'USD')));
 
         $request = $this->httpClient->getLastRequest();
 
@@ -84,5 +83,42 @@ final class TransactionServiceTest extends TestCase
         $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
 
         self::assertSame('txn-auth-001', $body['TransactionIdentifier']);
+    }
+
+    public function testCaptureBodyContainsTotalAmount(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('capture_approved'));
+
+        $this->service->capture(new CaptureRequest('txn-001', Money::of('75.50', 'USD')));
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame(75.5, $body['TotalAmount']);
+    }
+
+    public function testRefundBodyContainsCurrencyCode(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('refund_approved'));
+
+        $this->service->refund(new RefundRequest(
+            transactionIdentifier: 'txn-001',
+            totalAmount:           Money::of('10.00', 'XCD'),
+            orderIdentifier:       'order-xcd',
+        ));
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame('951', $body['CurrencyCode']);  // XCD numeric
+    }
+
+    public function testCaptureCurrencyMismatchThrowsValidationException(): void
+    {
+        $this->expectException(\PowerTranz\Exception\ValidationException::class);
+
+        new CaptureRequest(
+            transactionIdentifier: 'txn-001',
+            totalAmount:           Money::of('100.00', 'USD'),
+            tipAmount:             Money::of('10.00', 'EUR'),  // mismatched currency
+        );
     }
 }

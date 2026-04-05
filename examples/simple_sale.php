@@ -11,7 +11,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use PowerTranz\Enum\CurrencyCode;
+use Brick\Money\Money;
 use PowerTranz\Model\Request\Parts\CardSource;
 use PowerTranz\Model\Request\SaleRequest;
 use PowerTranz\Model\Response\ThreeDSecureChallenge;
@@ -23,8 +23,7 @@ $powerTranzPassword = getenv('POWERTRANZ_PASSWORD') ?: throw new \RuntimeExcepti
 $client = new PowerTranzClient($powerTranzId, $powerTranzPassword);
 
 $sale = new SaleRequest(
-    totalAmount:     29.99,
-    currencyCode:    CurrencyCode::USD,
+    totalAmount:     Money::of('29.99', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
     source:          new CardSource(
         cardPan:        '4111111111111111',
@@ -47,6 +46,7 @@ if ($result->approved) {
     echo "  Transaction: {$result->transactionIdentifier}\n";
     echo "  Auth code:   {$result->authorizationCode}\n";
     echo "  Reference:   {$result->referenceNumber}\n";
+    echo "  Amount:      {$result->totalAmount}\n";
 } else {
     echo "✗ Sale declined: {$result->responseMessage} ({$result->isoResponseCode->value})\n";
 }

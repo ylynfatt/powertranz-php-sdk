@@ -18,7 +18,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use PowerTranz\Enum\CurrencyCode;
+use Brick\Money\Money;
 use PowerTranz\Model\Request\Parts\BrowserDetails;
 use PowerTranz\Model\Request\Parts\CardSource;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
@@ -50,8 +50,7 @@ $browserDetails = new BrowserDetails(
 );
 
 $sale = new SaleRequest(
-    totalAmount:     75.00,
-    currencyCode:    CurrencyCode::USD,
+    totalAmount:     Money::of('75.00', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
     source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
     threeDSecure:    ThreeDSecure::withBrowser($browserDetails),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PowerTranz\Model\Request;
 
+use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Exception\ValidationException;
@@ -15,6 +16,10 @@ use Ramsey\Uuid\Uuid;
 
 /**
  * Abstract base for all SPI transaction requests (Auth, Sale, RiskMgmt).
+ *
+ * The {@see $totalAmount} is expressed as a {@see Money} object so that the
+ * currency and amount are kept together and arbitrary-precision decimal
+ * arithmetic is used throughout — no float rounding surprises.
  *
  * The {@see $transactionIdentifier} is optional — a UUID v4 is automatically
  * generated when not supplied. If you pass your own value it must be a valid
@@ -30,8 +35,7 @@ abstract class SpiRequest implements JsonSerializable
     public readonly string $transactionIdentifier;
 
     public function __construct(
-        public readonly float $totalAmount,
-        public readonly CurrencyCode $currencyCode,
+        public readonly Money $totalAmount,
         public readonly string $orderIdentifier,
         public readonly CardSource|TokenSource $source,
         ?string $transactionIdentifier = null,
@@ -69,7 +73,7 @@ abstract class SpiRequest implements JsonSerializable
     {
         $errors = [];
 
-        if ($this->totalAmount <= 0) {
+        if (!$this->totalAmount->isPositive()) {
             $errors['totalAmount'] = 'TotalAmount must be greater than zero.';
         }
 
@@ -86,11 +90,28 @@ abstract class SpiRequest implements JsonSerializable
         }
     }
 
+    /**
+     * Resolve the ISO 4217 numeric currency string from the Money object.
+     * Falls back to the alpha code string directly if not in our enum.
+     */
+    private function currencyNumericString(): string
+    {
+        $alpha = $this->totalAmount->getCurrency()->getCurrencyCode();
+
+        try {
+            return CurrencyCode::fromAlphaCode($alpha)->numericString();
+        } catch (\ValueError) {
+            // Currency is valid for brick/money but not in our enum — pass alpha as-is
+            // (should not happen in production; the caller would typically use CurrencyCode::USD->money())
+            return $alpha;
+        }
+    }
+
     public function jsonSerialize(): mixed
     {
         $data = [
-            'TotalAmount'           => round($this->totalAmount, 2),
-            'CurrencyCode'          => $this->currencyCode->numericString(),
+            'TotalAmount'           => (float) (string) $this->totalAmount->getAmount(),
+            'CurrencyCode'          => $this->currencyNumericString(),
             'OrderIdentifier'       => $this->orderIdentifier,
             'TransactionIdentifier' => $this->transactionIdentifier,
             'Source'                => $this->source->jsonSerialize(),

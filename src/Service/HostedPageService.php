@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace PowerTranz\Service;
 
+use Brick\Money\Money;
 use PowerTranz\Config\Configuration;
+use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Exception\ValidationException;
 
 /**
@@ -28,18 +30,20 @@ final class HostedPageService
     /**
      * Build the redirect URL for a Hosted Payment Page session.
      *
-     * @param string      $orderIdentifier  Your unique order reference.
-     * @param float       $totalAmount      Amount to charge.
-     * @param string      $currencyCode     ISO 4217 numeric currency code (e.g. '840' for USD).
-     * @param string      $returnUrl        URL to redirect the customer to after payment.
-     * @param string|null $pageSetName      HPP page set name configured in the merchant portal.
-     * @param string|null $pageName         HPP page name within the page set.
-     * @param array<string, string> $extra  Additional query parameters.
+     * The {@see $totalAmount} is a {@see Money} object — the currency code
+     * is derived from it automatically, so no separate currency parameter
+     * is needed.
+     *
+     * @param  string               $orderIdentifier  Your unique order reference.
+     * @param  Money                $totalAmount       Amount and currency to charge.
+     * @param  string               $returnUrl         URL to redirect the customer to after payment.
+     * @param  string|null          $pageSetName       HPP page set name configured in the merchant portal.
+     * @param  string|null          $pageName          HPP page name within the page set.
+     * @param  array<string, string> $extra            Additional query parameters.
      */
     public function buildRedirectUrl(
         string $orderIdentifier,
-        float $totalAmount,
-        string $currencyCode,
+        Money $totalAmount,
         string $returnUrl,
         ?string $pageSetName = null,
         ?string $pageName = null,
@@ -49,7 +53,7 @@ final class HostedPageService
             throw new ValidationException('OrderIdentifier must not be empty.');
         }
 
-        if ($totalAmount <= 0) {
+        if (!$totalAmount->isPositive()) {
             throw new ValidationException('TotalAmount must be greater than zero.');
         }
 
@@ -57,16 +61,20 @@ final class HostedPageService
             throw new ValidationException('ReturnUrl must be a valid URL.');
         }
 
+        $alpha       = $totalAmount->getCurrency()->getCurrencyCode();
+        $currencyNum = $this->resolveCurrencyNumeric($alpha);
+        $amountStr   = (string) $totalAmount->getAmount();
+
         $baseUrl = $this->config->environment->isSandbox()
             ? 'https://staging.ptranz.com/hpp/'
             : 'https://hpp.ptranz.com/hpp/';
 
         $params = array_merge([
-            'PowerTranzId'      => $this->config->powerTranzId,
-            'OrderIdentifier'   => $orderIdentifier,
-            'TotalAmount'       => number_format($totalAmount, 2, '.', ''),
-            'CurrencyCode'      => $currencyCode,
-            'ReturnUrl'         => $returnUrl,
+            'PowerTranzId'    => $this->config->powerTranzId,
+            'OrderIdentifier' => $orderIdentifier,
+            'TotalAmount'     => $amountStr,
+            'CurrencyCode'    => $currencyNum,
+            'ReturnUrl'       => $returnUrl,
         ], $extra);
 
         if ($pageSetName !== null) {
@@ -78,5 +86,14 @@ final class HostedPageService
         }
 
         return $baseUrl . '?' . http_build_query($params);
+    }
+
+    private function resolveCurrencyNumeric(string $alpha): string
+    {
+        try {
+            return CurrencyCode::fromAlphaCode($alpha)->numericString();
+        } catch (\ValueError) {
+            return $alpha;
+        }
     }
 }

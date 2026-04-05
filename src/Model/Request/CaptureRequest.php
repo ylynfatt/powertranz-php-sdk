@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PowerTranz\Model\Request;
 
+use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Exception\ValidationException;
 
@@ -13,15 +14,19 @@ use PowerTranz\Exception\ValidationException;
  * The captured amount may be less than or equal to the authorised amount.
  * Partial captures are supported.
  *
+ * All monetary values are expressed as {@see Money} objects to eliminate
+ * float rounding issues.  The tip and tax amounts, when provided, must use
+ * the same currency as the capture amount.
+ *
  * Corresponds to POST /capture.
  */
 final class CaptureRequest implements JsonSerializable
 {
     public function __construct(
         public readonly string $transactionIdentifier,
-        public readonly float $totalAmount,
-        public readonly ?float $tipAmount = null,
-        public readonly ?float $taxAmount = null,
+        public readonly Money $totalAmount,
+        public readonly ?Money $tipAmount = null,
+        public readonly ?Money $taxAmount = null,
         public readonly ?string $externalIdentifier = null,
         public readonly ?string $externalGroupIdentifier = null,
     ) {
@@ -31,8 +36,18 @@ final class CaptureRequest implements JsonSerializable
             $errors['transactionIdentifier'] = 'TransactionIdentifier must not be empty.';
         }
 
-        if ($this->totalAmount <= 0) {
+        if (!$this->totalAmount->isPositive()) {
             $errors['totalAmount'] = 'TotalAmount must be greater than zero.';
+        }
+
+        $currency = $this->totalAmount->getCurrency();
+
+        if ($this->tipAmount !== null && !$this->tipAmount->getCurrency()->is($currency)) {
+            $errors['tipAmount'] = 'TipAmount currency must match TotalAmount currency.';
+        }
+
+        if ($this->taxAmount !== null && !$this->taxAmount->getCurrency()->is($currency)) {
+            $errors['taxAmount'] = 'TaxAmount currency must match TotalAmount currency.';
         }
 
         if ($errors !== []) {
@@ -44,15 +59,15 @@ final class CaptureRequest implements JsonSerializable
     {
         $data = [
             'TransactionIdentifier' => $this->transactionIdentifier,
-            'TotalAmount'           => round($this->totalAmount, 2),
+            'TotalAmount'           => (float) (string) $this->totalAmount->getAmount(),
         ];
 
         if ($this->tipAmount !== null) {
-            $data['TipAmount'] = round($this->tipAmount, 2);
+            $data['TipAmount'] = (float) (string) $this->tipAmount->getAmount();
         }
 
         if ($this->taxAmount !== null) {
-            $data['TaxAmount'] = round($this->taxAmount, 2);
+            $data['TaxAmount'] = (float) (string) $this->taxAmount->getAmount();
         }
 
         if ($this->externalIdentifier !== null) {

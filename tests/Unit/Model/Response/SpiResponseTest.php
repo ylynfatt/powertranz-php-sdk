@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PowerTranz\Tests\Unit\Model\Response;
 
+use Brick\Money\Money;
 use PHPUnit\Framework\TestCase;
 use PowerTranz\Enum\IsoResponseCode;
 use PowerTranz\Model\Response\SaleResponse;
@@ -23,7 +24,10 @@ final class SpiResponseTest extends TestCase
         self::assertSame('txn-sale-001', $response->transactionIdentifier);
         self::assertSame('order-456', $response->orderIdentifier);
         self::assertSame('MASTERCARD', $response->cardBrand);
-        self::assertSame(99.50, $response->totalAmount);
+        self::assertNotNull($response->totalAmount);
+        self::assertInstanceOf(Money::class, $response->totalAmount);
+        self::assertSame('99.50', (string) $response->totalAmount->getAmount());
+        self::assertSame('USD', $response->totalAmount->getCurrency()->getCurrencyCode());
     }
 
     public function testHydratesDeclinedResponse(): void

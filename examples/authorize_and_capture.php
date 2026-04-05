@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use PowerTranz\Enum\CurrencyCode;
+use Brick\Money\Money;
 use PowerTranz\Model\Request\AuthRequest;
 use PowerTranz\Model\Request\CaptureRequest;
 use PowerTranz\Model\Request\Parts\CardSource;
@@ -28,8 +28,7 @@ $client = new PowerTranzClient(
 
 // Step 1: Authorise (reserve funds)
 $auth = new AuthRequest(
-    totalAmount:     150.00,
-    currencyCode:    CurrencyCode::USD,
+    totalAmount:     Money::of('150.00', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
     source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
 );
@@ -52,7 +51,7 @@ $authorisedTxnId = $authResult->transactionIdentifier;
 // Step 2: Capture (in a real app, this would happen when the order ships)
 $captureResult = $client->transactions->capture(new CaptureRequest(
     transactionIdentifier: $authorisedTxnId,
-    totalAmount:           150.00,
+    totalAmount:           Money::of('150.00', 'USD'),
 ));
 
 if ($captureResult->approved) {

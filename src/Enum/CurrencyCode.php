@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace PowerTranz\Enum;
 
+use Brick\Money\Money;
+
 /**
  * ISO 4217 numeric currency codes.
  *
  * Caribbean currencies are listed first as PowerTranz is a Caribbean-focused gateway.
+ * Case names match ISO 4217 alpha-3 codes exactly, so {@see isoAlpha()} can return
+ * {@see CurrencyCode::name} and {@see fromAlphaCode()} can do a reverse lookup.
  */
 enum CurrencyCode: int
 {
@@ -43,6 +47,43 @@ enum CurrencyCode: int
     public function numericString(): string
     {
         return (string) $this->value;
+    }
+
+    /**
+     * Returns the ISO 4217 alpha-3 code (e.g. 'USD', 'XCD').
+     *
+     * Enum case names are ISO alpha codes, so this simply returns {@see CurrencyCode::name}.
+     */
+    public function isoAlpha(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Create a {@see Money} instance for this currency with the given amount.
+     *
+     * @param  numeric-string|int|float $amount  Decimal amount, e.g. '29.99'.
+     *                                           Pass as a string to avoid float precision issues.
+     */
+    public function money(int|float|string $amount): Money
+    {
+        return Money::of((string) $amount, $this->name);
+    }
+
+    /**
+     * Look up a CurrencyCode by its ISO 4217 alpha-3 code (e.g. 'USD').
+     *
+     * @throws \ValueError When the supplied alpha code is not in the enum.
+     */
+    public static function fromAlphaCode(string $alpha): self
+    {
+        foreach (self::cases() as $case) {
+            if ($case->name === strtoupper($alpha)) {
+                return $case;
+            }
+        }
+
+        throw new \ValueError("Currency alpha code '{$alpha}' is not supported by CurrencyCode.");
     }
 
     public function symbol(): string

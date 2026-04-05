@@ -14,7 +14,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use PowerTranz\Enum\CurrencyCode;
+use Brick\Money\Money;
 use PowerTranz\Model\Request\Parts\CardSource;
 use PowerTranz\Model\Request\Parts\TokenSource;
 use PowerTranz\Model\Request\SaleRequest;
@@ -32,8 +32,7 @@ $client = new PowerTranzClient(
 echo "--- Initial charge with tokenization ---\n";
 
 $firstSale = new SaleRequest(
-    totalAmount:     15.00,
-    currencyCode:    CurrencyCode::USD,
+    totalAmount:     Money::of('15.00', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
     source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
     tokenize:        true,
@@ -62,8 +61,7 @@ echo "  (Store this token in your database against the customer record)\n\n";
 echo "--- Subsequent recurring charge with token ---\n";
 
 $repeatSale = new SaleRequest(
-    totalAmount:     15.00,
-    currencyCode:    CurrencyCode::USD,
+    totalAmount:     Money::of('15.00', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
     source:          new TokenSource($panToken),
     // transactionIdentifier omitted — a UUID v4 is generated automatically

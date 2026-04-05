@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PowerTranz\Tests\Unit\Service;
 
+use Brick\Money\Money;
 use PHPUnit\Framework\TestCase;
 use PowerTranz\Config\Configuration;
 use PowerTranz\Enum\CurrencyCode;
@@ -62,8 +63,7 @@ final class SpiServiceTest extends TestCase
         $this->httpClient->addResponse(200, ResponseFixture::load('auth_approved'));
 
         $request = new AuthRequest(
-            totalAmount:     29.99,
-            currencyCode:    CurrencyCode::USD,
+            totalAmount:     Money::of('29.99', 'USD'),
             orderIdentifier: 'order-123',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
         );
@@ -130,8 +130,7 @@ final class SpiServiceTest extends TestCase
 
         // No transactionIdentifier supplied
         $request = new SaleRequest(
-            totalAmount:     10.00,
-            currencyCode:    CurrencyCode::USD,
+            totalAmount:     Money::of('10.00', 'USD'),
             orderIdentifier: 'order-auto-uuid',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
         );
@@ -152,8 +151,8 @@ final class SpiServiceTest extends TestCase
     {
         $source = new CardSource('4111111111111111', '2512', '123', 'Jane Doe');
 
-        $request1 = new SaleRequest(10.00, CurrencyCode::USD, 'order-1', $source);
-        $request2 = new SaleRequest(10.00, CurrencyCode::USD, 'order-2', $source);
+        $request1 = new SaleRequest(Money::of('10.00', 'USD'), 'order-1', $source);
+        $request2 = new SaleRequest(Money::of('10.00', 'USD'), 'order-2', $source);
 
         self::assertNotSame($request1->transactionIdentifier, $request2->transactionIdentifier);
     }
@@ -163,8 +162,7 @@ final class SpiServiceTest extends TestCase
         $customUuid = '550e8400-e29b-41d4-a716-446655440000';
 
         $request = new SaleRequest(
-            totalAmount:           10.00,
-            currencyCode:          CurrencyCode::USD,
+            totalAmount:           Money::of('10.00', 'USD'),
             orderIdentifier:       'order-custom',
             source:                new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
             transactionIdentifier: $customUuid,
@@ -177,8 +175,7 @@ final class SpiServiceTest extends TestCase
     {
         try {
             new SaleRequest(
-                totalAmount:           10.00,
-                currencyCode:          CurrencyCode::USD,
+                totalAmount:           Money::of('10.00', 'USD'),
                 orderIdentifier:       'order-bad-id',
                 source:                new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
                 transactionIdentifier: 'not-a-uuid',
@@ -209,8 +206,7 @@ final class SpiServiceTest extends TestCase
         );
 
         $request = new SaleRequest(
-            totalAmount:     99.00,
-            currencyCode:    CurrencyCode::USD,
+            totalAmount:     Money::of('99.00', 'USD'),
             orderIdentifier: 'order-3ds',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
             threeDSecure:    ThreeDSecure::withBrowser($browserDetails),
@@ -235,11 +231,47 @@ final class SpiServiceTest extends TestCase
         self::assertSame(0, $this->httpClient->getRequestCount());
     }
 
+    public function testCurrencyCodeEnumMoneyFactory(): void
+    {
+        $money = CurrencyCode::USD->money('29.99');
+
+        self::assertSame('USD', $money->getCurrency()->getCurrencyCode());
+        self::assertSame('29.99', (string) $money->getAmount());
+    }
+
+    public function testCurrencyCodeIsoAlpha(): void
+    {
+        self::assertSame('USD', CurrencyCode::USD->isoAlpha());
+        self::assertSame('XCD', CurrencyCode::XCD->isoAlpha());
+        self::assertSame('JMD', CurrencyCode::JMD->isoAlpha());
+    }
+
+    public function testCurrencyCodeFromAlphaCode(): void
+    {
+        self::assertSame(CurrencyCode::USD, CurrencyCode::fromAlphaCode('USD'));
+        self::assertSame(CurrencyCode::XCD, CurrencyCode::fromAlphaCode('XCD'));
+        self::assertSame(CurrencyCode::USD, CurrencyCode::fromAlphaCode('usd')); // case-insensitive
+    }
+
+    public function testTotalAmountInBodyMatchesMoneyAmount(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_approved'));
+
+        $this->service->sale(new SaleRequest(
+            totalAmount:     Money::of('149.99', 'USD'),
+            orderIdentifier: 'order-amount-check',
+            source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+        ));
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertSame(149.99, $body['TotalAmount']);
+    }
+
     private function makeSaleRequest(): SaleRequest
     {
         return new SaleRequest(
-            totalAmount:     99.50,
-            currencyCode:    CurrencyCode::USD,
+            totalAmount:     Money::of('99.50', 'USD'),
             orderIdentifier: 'order-456',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
         );
