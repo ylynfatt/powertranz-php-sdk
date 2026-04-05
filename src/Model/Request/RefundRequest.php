@@ -8,44 +8,41 @@ use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 use PowerTranz\Model\Request\Parts\Address;
 
 /**
  * Refund a previously captured transaction, in full or partially.
  *
  * The {@see $totalAmount} is expressed as a {@see Money} object — the currency
- * is derived from it automatically, so no separate {@see CurrencyCode} parameter
- * is needed.
+ * is derived from it automatically, so no separate currency parameter is needed.
  *
  * Corresponds to POST /refund.
  */
 final class RefundRequest implements JsonSerializable
 {
     public function __construct(
+        #[Assert\NotBlank(normalizer: 'trim', message: 'TransactionIdentifier must not be empty.')]
         public readonly string $transactionIdentifier,
+
         public readonly Money $totalAmount,
+
+        #[Assert\NotBlank(normalizer: 'trim', message: 'OrderIdentifier must not be empty.')]
         public readonly string $orderIdentifier,
+
         public readonly ?string $externalIdentifier = null,
         public readonly ?string $externalGroupIdentifier = null,
         public readonly ?Address $billingAddress = null,
     ) {
-        $errors = [];
-
-        if (trim($this->transactionIdentifier) === '') {
-            $errors['transactionIdentifier'] = 'TransactionIdentifier must not be empty.';
-        }
-
         if (!$this->totalAmount->isPositive()) {
-            $errors['totalAmount'] = 'TotalAmount must be greater than zero.';
+            throw new ValidationException(
+                'Refund request validation failed.',
+                ['totalAmount' => 'TotalAmount must be greater than zero.'],
+            );
         }
 
-        if (trim($this->orderIdentifier) === '') {
-            $errors['orderIdentifier'] = 'OrderIdentifier must not be empty.';
-        }
-
-        if ($errors !== []) {
-            throw new ValidationException('Refund request validation failed.', $errors);
-        }
+        RequestValidator::validate($this, 'Refund request validation failed.');
     }
 
     /**

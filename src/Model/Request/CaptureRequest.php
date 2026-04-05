@@ -7,6 +7,9 @@ namespace PowerTranz\Model\Request;
 use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Capture previously authorised funds.
@@ -14,44 +17,60 @@ use PowerTranz\Exception\ValidationException;
  * The captured amount may be less than or equal to the authorised amount.
  * Partial captures are supported.
  *
- * All monetary values are expressed as {@see Money} objects to eliminate
- * float rounding issues.  The tip and tax amounts, when provided, must use
- * the same currency as the capture amount.
+ * All monetary values are expressed as {@see Money} objects.  When tip or tax
+ * amounts are supplied they must share the same currency as {@see $totalAmount};
+ * this cross-field rule is enforced by the {@see validateCurrencyConsistency()}
+ * callback constraint.
  *
  * Corresponds to POST /capture.
  */
 final class CaptureRequest implements JsonSerializable
 {
     public function __construct(
+        #[Assert\NotBlank(normalizer: 'trim', message: 'TransactionIdentifier must not be empty.')]
         public readonly string $transactionIdentifier,
+
         public readonly Money $totalAmount,
+
         public readonly ?Money $tipAmount = null,
         public readonly ?Money $taxAmount = null,
         public readonly ?string $externalIdentifier = null,
         public readonly ?string $externalGroupIdentifier = null,
     ) {
-        $errors = [];
-
-        if (trim($this->transactionIdentifier) === '') {
-            $errors['transactionIdentifier'] = 'TransactionIdentifier must not be empty.';
-        }
-
         if (!$this->totalAmount->isPositive()) {
-            $errors['totalAmount'] = 'TotalAmount must be greater than zero.';
+            throw new ValidationException(
+                'Capture request validation failed.',
+                ['totalAmount' => 'TotalAmount must be greater than zero.'],
+            );
         }
 
+        RequestValidator::validate($this, 'Capture request validation failed.');
+    }
+
+    /**
+     * Cross-field constraint: tip and tax amounts must share the same currency
+     * as the capture total.
+     *
+     * Symfony invokes this automatically when validating a {@see CaptureRequest}
+     * instance because of the {@see Assert\Callback} attribute.
+     */
+    #[Assert\Callback]
+    public function validateCurrencyConsistency(ExecutionContextInterface $context): void
+    {
         $currency = $this->totalAmount->getCurrency();
 
         if ($this->tipAmount !== null && !$this->tipAmount->getCurrency()->is($currency)) {
-            $errors['tipAmount'] = 'TipAmount currency must match TotalAmount currency.';
+            $context
+                ->buildViolation('TipAmount currency must match TotalAmount currency.')
+                ->atPath('tipAmount')
+                ->addViolation();
         }
 
         if ($this->taxAmount !== null && !$this->taxAmount->getCurrency()->is($currency)) {
-            $errors['taxAmount'] = 'TaxAmount currency must match TotalAmount currency.';
-        }
-
-        if ($errors !== []) {
-            throw new ValidationException('Capture request validation failed.', $errors);
+            $context
+                ->buildViolation('TaxAmount currency must match TotalAmount currency.')
+                ->atPath('taxAmount')
+                ->addViolation();
         }
     }
 

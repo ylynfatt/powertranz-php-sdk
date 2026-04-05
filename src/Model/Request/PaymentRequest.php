@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace PowerTranz\Model\Request;
 
 use JsonSerializable;
-use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Completes a transaction after a 3DS challenge.
@@ -21,14 +22,10 @@ use PowerTranz\Exception\ValidationException;
 final class PaymentRequest implements JsonSerializable
 {
     public function __construct(
+        #[Assert\NotBlank(normalizer: 'trim', message: 'SpiToken must not be empty.')]
         public readonly string $spiToken,
     ) {
-        if (trim($this->spiToken) === '') {
-            throw new ValidationException(
-                'SpiToken is required to complete a 3DS payment.',
-                ['spiToken' => 'SpiToken must not be empty.']
-            );
-        }
+        RequestValidator::validate($this, 'SpiToken is required to complete a 3DS payment.');
     }
 
     public function jsonSerialize(): mixed

@@ -5,50 +5,50 @@ declare(strict_types=1);
 namespace PowerTranz\Model\Request\Parts;
 
 use JsonSerializable;
-use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Card payment source — use when charging a raw card number.
  *
  * For repeat/recurring charges use {@see TokenSource} with the PanToken
  * returned from a previous transaction.
+ *
+ * All fields are validated on construction via Symfony Validator constraints
+ * declared as PHP 8 attributes.  A {@see \PowerTranz\Exception\ValidationException}
+ * is thrown immediately if any constraint is violated — before any HTTP call is made.
  */
 final class CardSource implements JsonSerializable
 {
     public function __construct(
+        #[Assert\Regex(
+            pattern: '/^\d{12,19}$/',
+            message: 'CardPan must be 12–19 digits.',
+        )]
         public readonly string $cardPan,
+
+        #[Assert\Regex(
+            pattern: '/^\d{4}$/',
+            message: 'CardExpiration must be in YYMM format (e.g. 2512 for December 2025).',
+        )]
         public readonly string $cardExpiration,
+
+        #[Assert\Regex(
+            pattern: '/^\d{3,4}$/',
+            message: 'CardCvv must be 3 or 4 digits.',
+        )]
         public readonly string $cardCvv,
+
+        #[Assert\NotBlank(message: 'CardholderName must not be empty.')]
+        #[Assert\Length(
+            min: 2,
+            max: 45,
+            minMessage: 'CardholderName must be between 2 and 45 characters.',
+            maxMessage: 'CardholderName must be between 2 and 45 characters.',
+        )]
         public readonly string $cardholderName,
     ) {
-        $this->validate();
-    }
-
-    private function validate(): void
-    {
-        $errors = [];
-
-        if (!preg_match('/^\d{12,19}$/', $this->cardPan)) {
-            $errors['cardPan'] = 'CardPan must be 12–19 digits.';
-        }
-
-        if (!preg_match('/^\d{4}$/', $this->cardExpiration)) {
-            $errors['cardExpiration'] = 'CardExpiration must be in YYMM format (e.g. 2512 for December 2025).';
-        }
-
-        if (!preg_match('/^\d{3,4}$/', $this->cardCvv)) {
-            $errors['cardCvv'] = 'CardCvv must be 3 or 4 digits.';
-        }
-
-        $nameLength = strlen($this->cardholderName);
-
-        if ($nameLength < 2 || $nameLength > 45) {
-            $errors['cardholderName'] = 'CardholderName must be between 2 and 45 characters.';
-        }
-
-        if ($errors !== []) {
-            throw new ValidationException('Card source validation failed.', $errors);
-        }
+        RequestValidator::validate($this, 'Card source validation failed.');
     }
 
     /**

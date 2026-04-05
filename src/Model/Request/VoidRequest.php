@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace PowerTranz\Model\Request;
 
 use JsonSerializable;
-use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Void (cancel) an authorised or captured transaction before settlement.
@@ -15,16 +16,13 @@ use PowerTranz\Exception\ValidationException;
 final class VoidRequest implements JsonSerializable
 {
     public function __construct(
+        #[Assert\NotBlank(normalizer: 'trim', message: 'TransactionIdentifier must not be empty.')]
         public readonly string $transactionIdentifier,
+
         public readonly ?string $externalIdentifier = null,
         public readonly ?string $externalGroupIdentifier = null,
     ) {
-        if (trim($this->transactionIdentifier) === '') {
-            throw new ValidationException(
-                'Void request validation failed.',
-                ['transactionIdentifier' => 'TransactionIdentifier must not be empty.']
-            );
-        }
+        RequestValidator::validate($this, 'Void request validation failed.');
     }
 
     public function jsonSerialize(): mixed

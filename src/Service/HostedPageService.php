@@ -8,6 +8,8 @@ use Brick\Money\Money;
 use PowerTranz\Config\Configuration;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
  * Service for PowerTranz Hosted Payment Page (HPP) integration.
@@ -34,12 +36,14 @@ final class HostedPageService
      * is derived from it automatically, so no separate currency parameter
      * is needed.
      *
-     * @param  string               $orderIdentifier  Your unique order reference.
-     * @param  Money                $totalAmount       Amount and currency to charge.
-     * @param  string               $returnUrl         URL to redirect the customer to after payment.
-     * @param  string|null          $pageSetName       HPP page set name configured in the merchant portal.
-     * @param  string|null          $pageName          HPP page name within the page set.
-     * @param  array<string, string> $extra            Additional query parameters.
+     * @param  string                $orderIdentifier  Your unique order reference.
+     * @param  Money                 $totalAmount       Amount and currency to charge.
+     * @param  string                $returnUrl         URL to redirect the customer to after payment.
+     * @param  string|null           $pageSetName       HPP page set name configured in the merchant portal.
+     * @param  string|null           $pageName          HPP page name within the page set.
+     * @param  array<string, string> $extra             Additional query parameters.
+     *
+     * @throws ValidationException when any parameter fails validation.
      */
     public function buildRedirectUrl(
         string $orderIdentifier,
@@ -49,17 +53,27 @@ final class HostedPageService
         ?string $pageName = null,
         array $extra = [],
     ): string {
-        if (trim($orderIdentifier) === '') {
-            throw new ValidationException('OrderIdentifier must not be empty.');
-        }
+        // Validate individual method parameters using Symfony constraints.
+        RequestValidator::validateValue(
+            $orderIdentifier,
+            new Assert\NotBlank(normalizer: 'trim', message: 'OrderIdentifier must not be empty.'),
+            'orderIdentifier',
+            'HPP parameter validation failed.',
+        );
 
         if (!$totalAmount->isPositive()) {
-            throw new ValidationException('TotalAmount must be greater than zero.');
+            throw new ValidationException(
+                'HPP parameter validation failed.',
+                ['totalAmount' => 'TotalAmount must be greater than zero.'],
+            );
         }
 
-        if (!filter_var($returnUrl, FILTER_VALIDATE_URL)) {
-            throw new ValidationException('ReturnUrl must be a valid URL.');
-        }
+        RequestValidator::validateValue(
+            $returnUrl,
+            [new Assert\NotBlank(), new Assert\Url(message: 'ReturnUrl must be a valid URL.')],
+            'returnUrl',
+            'HPP parameter validation failed.',
+        );
 
         $alpha       = $totalAmount->getCurrency()->getCurrencyCode();
         $currencyNum = $this->resolveCurrencyNumeric($alpha);
