@@ -23,15 +23,14 @@ $powerTranzPassword = getenv('POWERTRANZ_PASSWORD') ?: throw new \RuntimeExcepti
 $client = new PowerTranzClient($powerTranzId, $powerTranzPassword);
 
 $sale = new SaleRequest(
-    totalAmount:           29.99,
-    currencyCode:          CurrencyCode::USD,
-    orderIdentifier:       'order-' . uniqid(),
-    transactionIdentifier: bin2hex(random_bytes(16)),
-    source:                new CardSource(
-        cardPan:         '4111111111111111',
-        cardExpiration:  '2512',
-        cardCvv:         '123',
-        cardholderName:  'Jane Doe',
+    totalAmount:     29.99,
+    currencyCode:    CurrencyCode::USD,
+    orderIdentifier: 'order-' . uniqid(),
+    source:          new CardSource(
+        cardPan:        '4111111111111111',
+        cardExpiration: '2512',
+        cardCvv:        '123',
+        cardholderName: 'Jane Doe',
     ),
 );
 

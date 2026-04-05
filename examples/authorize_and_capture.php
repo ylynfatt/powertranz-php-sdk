@@ -28,11 +28,10 @@ $client = new PowerTranzClient(
 
 // Step 1: Authorise (reserve funds)
 $auth = new AuthRequest(
-    totalAmount:           150.00,
-    currencyCode:          CurrencyCode::USD,
-    orderIdentifier:       'order-' . uniqid(),
-    transactionIdentifier: bin2hex(random_bytes(16)),
-    source:                new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+    totalAmount:     150.00,
+    currencyCode:    CurrencyCode::USD,
+    orderIdentifier: 'order-' . uniqid(),
+    source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
 );
 
 $authResult = $client->spi->authorize($auth);

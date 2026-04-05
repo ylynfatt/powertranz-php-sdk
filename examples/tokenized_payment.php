@@ -32,12 +32,11 @@ $client = new PowerTranzClient(
 echo "--- Initial charge with tokenization ---\n";
 
 $firstSale = new SaleRequest(
-    totalAmount:           15.00,
-    currencyCode:          CurrencyCode::USD,
-    orderIdentifier:       'order-' . uniqid(),
-    transactionIdentifier: bin2hex(random_bytes(16)),
-    source:                new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
-    tokenize:              true,
+    totalAmount:     15.00,
+    currencyCode:    CurrencyCode::USD,
+    orderIdentifier: 'order-' . uniqid(),
+    source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+    tokenize:        true,
 );
 
 $firstResult = $client->spi->sale($firstSale);
@@ -63,11 +62,11 @@ echo "  (Store this token in your database against the customer record)\n\n";
 echo "--- Subsequent recurring charge with token ---\n";
 
 $repeatSale = new SaleRequest(
-    totalAmount:           15.00,
-    currencyCode:          CurrencyCode::USD,
-    orderIdentifier:       'order-' . uniqid(),
-    transactionIdentifier: bin2hex(random_bytes(16)),
-    source:                new TokenSource($panToken),
+    totalAmount:     15.00,
+    currencyCode:    CurrencyCode::USD,
+    orderIdentifier: 'order-' . uniqid(),
+    source:          new TokenSource($panToken),
+    // transactionIdentifier omitted — a UUID v4 is generated automatically
 );
 
 $repeatResult = $client->spi->sale($repeatSale);

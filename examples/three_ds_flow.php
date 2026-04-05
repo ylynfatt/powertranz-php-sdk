@@ -50,12 +50,11 @@ $browserDetails = new BrowserDetails(
 );
 
 $sale = new SaleRequest(
-    totalAmount:           75.00,
-    currencyCode:          CurrencyCode::USD,
-    orderIdentifier:       'order-' . uniqid(),
-    transactionIdentifier: bin2hex(random_bytes(16)),
-    source:                new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
-    threeDSecure:          ThreeDSecure::withBrowser($browserDetails),
+    totalAmount:     75.00,
+    currencyCode:    CurrencyCode::USD,
+    orderIdentifier: 'order-' . uniqid(),
+    source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+    threeDSecure:    ThreeDSecure::withBrowser($browserDetails),
 );
 
 $result = $client->spi->sale($sale);

@@ -11,25 +11,58 @@ use PowerTranz\Model\Request\Parts\Address;
 use PowerTranz\Model\Request\Parts\CardSource;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
 use PowerTranz\Model\Request\Parts\TokenSource;
+use Ramsey\Uuid\Uuid;
 
 /**
  * Abstract base for all SPI transaction requests (Auth, Sale, RiskMgmt).
+ *
+ * The {@see $transactionIdentifier} is optional — a UUID v4 is automatically
+ * generated when not supplied. If you pass your own value it must be a valid
+ * UUID (RFC 4122) so that the PowerTranz gateway can uniquely identify and
+ * de-duplicate requests.
  */
 abstract class SpiRequest implements JsonSerializable
 {
+    /**
+     * Unique identifier for this transaction.
+     * Auto-generated as a UUID v4 when not explicitly provided.
+     */
+    public readonly string $transactionIdentifier;
+
     public function __construct(
         public readonly float $totalAmount,
         public readonly CurrencyCode $currencyCode,
         public readonly string $orderIdentifier,
-        public readonly string $transactionIdentifier,
         public readonly CardSource|TokenSource $source,
+        ?string $transactionIdentifier = null,
         public readonly bool $tokenize = false,
         public readonly ?ThreeDSecure $threeDSecure = null,
         public readonly ?Address $billingAddress = null,
         public readonly ?Address $shippingAddress = null,
         public readonly ?string $extendedData = null,
     ) {
+        $this->transactionIdentifier = $this->resolveTransactionIdentifier($transactionIdentifier);
         $this->validateBase();
+    }
+
+    /**
+     * Auto-generate a UUID v4 if no identifier was supplied.
+     * Validate the format if one was supplied.
+     */
+    private function resolveTransactionIdentifier(?string $value): string
+    {
+        if ($value === null || trim($value) === '') {
+            return Uuid::uuid4()->toString();
+        }
+
+        if (!Uuid::isValid($value)) {
+            throw new ValidationException(
+                'SPI request validation failed.',
+                ['transactionIdentifier' => 'TransactionIdentifier must be a valid UUID (e.g. 550e8400-e29b-41d4-a716-446655440000).'],
+            );
+        }
+
+        return $value;
     }
 
     private function validateBase(): void
@@ -46,10 +79,6 @@ abstract class SpiRequest implements JsonSerializable
 
         if (strlen($this->orderIdentifier) > 255) {
             $errors['orderIdentifier'] = 'OrderIdentifier must not exceed 255 characters.';
-        }
-
-        if (trim($this->transactionIdentifier) === '') {
-            $errors['transactionIdentifier'] = 'TransactionIdentifier must not be empty.';
         }
 
         if ($errors !== []) {
