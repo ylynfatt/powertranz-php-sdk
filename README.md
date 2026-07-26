@@ -1,6 +1,6 @@
 # PowerTranz PHP SDK
 
-Unofficial PHP SDK for the [PowerTranz](https://www.ptranz.com/) payment gateway — SPI transactions, 3-D Secure 2.x, tokenisation, and Hosted Payment Pages.
+Unofficial PHP SDK for the [PowerTranz](https://powertranz.com/) payment gateway — SPI transactions, 3-D Secure 2.x, tokenisation, and Hosted Payment Pages.
 
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.1-777bb4)](composer.json)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
