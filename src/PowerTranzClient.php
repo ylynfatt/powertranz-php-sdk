@@ -50,7 +50,7 @@ use Psr\Log\LoggerInterface;
  *
  *   $client->spi->sale($saleRequest);
  *   $client->transactions->capture($captureRequest);
- *   $client->hostedPage->buildRedirectUrl(...);
+ *   $client->hostedPage->sale(...);
  */
 final class PowerTranzClient
 {

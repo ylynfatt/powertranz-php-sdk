@@ -83,7 +83,11 @@ class SpiResponse
         $this->responseMessage       = (string) ($data['ResponseMessage'] ?? '');
         $this->transactionIdentifier = (string) ($data['TransactionIdentifier'] ?? '');
         $this->orderIdentifier       = isset($data['OrderIdentifier']) ? (string) $data['OrderIdentifier'] : null;
-        $this->referenceNumber       = isset($data['ReferenceNumber']) ? (string) $data['ReferenceNumber'] : null;
+        // The gateway calls this RRN (Retrieval Reference Number). ReferenceNumber
+        // is accepted as a fallback in case a variant response uses it.
+        $this->referenceNumber = isset($data['RRN'])
+            ? (string) $data['RRN']
+            : (isset($data['ReferenceNumber']) ? (string) $data['ReferenceNumber'] : null);
         $this->authorizationCode     = isset($data['AuthorizationCode']) ? (string) $data['AuthorizationCode'] : null;
         $this->panToken              = isset($data['PanToken']) && $data['PanToken'] !== '' ? (string) $data['PanToken'] : null;
         $this->spiToken              = isset($data['SpiToken']) && $data['SpiToken'] !== '' ? (string) $data['SpiToken'] : null;

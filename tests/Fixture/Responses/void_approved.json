@@ -4,7 +4,7 @@
     "IsoResponseCode": "00",
     "ResponseCode": "A0000",
     "ResponseMessage": "Approved",
-    "ReferenceNumber": "REF008",
+    "RRN": "REF008",
     "TransactionType": 5,
     "Approved": true
 }

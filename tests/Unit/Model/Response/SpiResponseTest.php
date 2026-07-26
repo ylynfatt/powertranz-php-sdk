@@ -66,6 +66,38 @@ final class SpiResponseTest extends TestCase
         self::assertSame('default', $response->getRaw('NonExistentField', 'default'));
     }
 
+    /**
+     * The gateway names this field RRN, not ReferenceNumber. Reading the wrong
+     * key left $referenceNumber permanently null while the README and examples
+     * advertised it.
+     */
+    public function testReferenceNumberIsReadFromRrn(): void
+    {
+        $response = SaleResponse::fromArray([
+            'IsoResponseCode' => '00',
+            'RRN'             => '307522590956',
+        ]);
+
+        self::assertSame('307522590956', $response->referenceNumber);
+    }
+
+    public function testReferenceNumberFallsBackToReferenceNumberKey(): void
+    {
+        $response = SaleResponse::fromArray([
+            'IsoResponseCode' => '00',
+            'ReferenceNumber' => 'REF999',
+        ]);
+
+        self::assertSame('REF999', $response->referenceNumber);
+    }
+
+    public function testReferenceNumberIsNullWhenAbsent(): void
+    {
+        $response = SaleResponse::fromArray(['IsoResponseCode' => '00']);
+
+        self::assertNull($response->referenceNumber);
+    }
+
     public function testThreeDsChallengeBuildsFromSp4Response(): void
     {
         $data      = ResponseFixture::loadAsArray('sale_3ds_redirect');
