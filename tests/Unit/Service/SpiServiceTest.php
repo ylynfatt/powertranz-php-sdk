@@ -22,6 +22,7 @@ use PowerTranz\Model\Response\PaymentResponse;
 use PowerTranz\Model\Response\SaleResponse;
 use PowerTranz\Model\Response\ThreeDSecureChallenge;
 use PowerTranz\Service\SpiService;
+use PowerTranz\Tests\Fixture\CollectingLogger;
 use PowerTranz\Tests\Fixture\MockHttpClient;
 use PowerTranz\Tests\Fixture\ResponseFixture;
 use Ramsey\Uuid\Uuid;
@@ -104,6 +105,56 @@ final class SpiServiceTest extends TestCase
 
         self::assertInstanceOf(PaymentResponse::class, $result);
         self::assertTrue($result->approved);
+    }
+
+    /**
+     * /spi/payment is the one endpoint whose body is not an object: it is the
+     * bare token as a quoted JSON string.
+     */
+    public function testPaymentBodyIsTheBareQuotedToken(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('payment_approved'));
+
+        $this->service->payment(new PaymentRequest('spi-token-abc123xyz'));
+
+        $body = $this->httpClient->getLastRequest()['body'];
+
+        self::assertSame('"spi-token-abc123xyz"', $body);
+
+        // Decodes to a string, not an array with an SpiToken key.
+        $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsString($decoded);
+        self::assertSame('spi-token-abc123xyz', $decoded);
+    }
+
+    public function testPaymentRequestSerializesToAString(): void
+    {
+        $request = new PaymentRequest('spi-token-abc123xyz');
+
+        self::assertSame('spi-token-abc123xyz', $request->jsonSerialize());
+        self::assertSame('"spi-token-abc123xyz"', json_encode($request, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The SpiToken can complete a payment for five minutes, so it must not be
+     * written to the debug log.
+     */
+    public function testSpiTokenIsNotWrittenToTheDebugLog(): void
+    {
+        $logger  = new CollectingLogger();
+        $service = new SpiService(
+            $this->httpClient,
+            new Configuration('test-id', 'test-pw', logger: $logger),
+        );
+
+        $this->httpClient->addResponse(200, ResponseFixture::load('payment_approved'));
+        $service->payment(new PaymentRequest('spi-token-abc123xyz'));
+
+        $logged = json_encode($logger->records, JSON_THROW_ON_ERROR);
+
+        self::assertNotFalse($logged);
+        self::assertStringNotContainsString('spi-token-abc123xyz', $logged);
+        self::assertStringContainsString('***', $logged);
     }
 
     public function testThrowsAuthenticationExceptionOn401(): void
