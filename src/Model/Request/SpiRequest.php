@@ -56,7 +56,13 @@ abstract class SpiRequest implements JsonSerializable
         )]
         public readonly string $orderIdentifier,
 
-        public readonly CardSource|TokenSource $source,
+        /**
+         * Card or token data. Omitted for hosted-page transactions, where the
+         * cardholder types their card into the gateway-hosted iframe instead —
+         * see {@see ExtendedData::$hostedPage}.
+         */
+        #[Assert\Valid]
+        public readonly CardSource|TokenSource|null $source = null,
 
         ?string $transactionIdentifier = null,
 
@@ -93,6 +99,33 @@ abstract class SpiRequest implements JsonSerializable
      * gateway rejects such requests, so catching it locally turns an opaque
      * remote failure into a named field error.
      */
+    /**
+     * Cross-field constraint: the gateway needs card data from exactly one place.
+     *
+     * Either the request carries a Source, or it carries hosted-page parameters
+     * and the cardholder enters the card in the gateway's iframe. Sending both is
+     * contradictory, and sending neither leaves nothing to charge.
+     */
+    #[Assert\Callback]
+    public function validateSourceOrHostedPage(ExecutionContextInterface $context): void
+    {
+        $hasHostedPage = $this->extendedData?->hostedPage !== null;
+
+        if ($this->source === null && !$hasHostedPage) {
+            $context
+                ->buildViolation('Either a Source or ExtendedData.HostedPage is required.')
+                ->atPath('source')
+                ->addViolation();
+        }
+
+        if ($this->source !== null && $hasHostedPage) {
+            $context
+                ->buildViolation('A Source must not be sent with ExtendedData.HostedPage — the cardholder enters card data on the hosted page.')
+                ->atPath('source')
+                ->addViolation();
+        }
+    }
+
     #[Assert\Callback]
     public function validateThreeDSecureParameters(ExecutionContextInterface $context): void
     {
@@ -158,10 +191,13 @@ abstract class SpiRequest implements JsonSerializable
             'TotalAmount'           => (float) (string) $this->totalAmount->getAmount(),
             'CurrencyCode'          => $this->currencyNumericString(),
             'ThreeDSecure'          => $this->threeDSecure,
-            'Source'                => $this->source->jsonSerialize(),
             'OrderIdentifier'       => $this->orderIdentifier,
             'Tokenize'              => $this->tokenize,
         ];
+
+        if ($this->source !== null) {
+            $data['Source'] = $this->source->jsonSerialize();
+        }
 
         if ($this->billingAddress !== null) {
             $data['BillingAddress'] = $this->billingAddress->jsonSerialize();

@@ -103,7 +103,7 @@ final class PowerTranzClient
 
         $this->spi          = new SpiService($httpClient, $config);
         $this->transactions = new TransactionService($httpClient, $config);
-        $this->hostedPage   = new HostedPageService($config);
+        $this->hostedPage   = new HostedPageService($this->spi);
     }
 
     /**
