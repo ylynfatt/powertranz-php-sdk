@@ -1,6 +1,6 @@
 {
-    "name": "powertranz/powertranz-php-sdk",
-    "description": "Official PHP SDK for the PowerTranz payment gateway — 3DS, tokenisation, HPP, recurring billing",
+    "name": "ylynfatt/powertranz-php-sdk",
+    "description": "Unofficial PHP SDK for the PowerTranz payment gateway — 3DS, tokenisation, HPP, recurring billing",
     "type": "library",
     "license": "MIT",
     "keywords": ["payment", "powertranz", "3ds", "gateway", "caribbean", "tokenisation"],
