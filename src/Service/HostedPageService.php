@@ -8,6 +8,7 @@ use Brick\Money\Money;
 use PowerTranz\Config\Configuration;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\Constraint\PositiveMoney;
 use PowerTranz\Validator\RequestValidator;
 use Symfony\Component\Validator\Constraints as Assert;
 
@@ -61,12 +62,12 @@ final class HostedPageService
             'HPP parameter validation failed.',
         );
 
-        if (!$totalAmount->isPositive()) {
-            throw new ValidationException(
-                'HPP parameter validation failed.',
-                ['totalAmount' => 'TotalAmount must be greater than zero.'],
-            );
-        }
+        RequestValidator::validateValue(
+            $totalAmount,
+            new PositiveMoney(message: 'TotalAmount must be greater than zero.'),
+            'totalAmount',
+            'HPP parameter validation failed.',
+        );
 
         RequestValidator::validateValue(
             $returnUrl,

@@ -7,11 +7,11 @@ namespace PowerTranz\Model\Request;
 use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
-use PowerTranz\Exception\ValidationException;
 use PowerTranz\Model\Request\Parts\Address;
 use PowerTranz\Model\Request\Parts\CardSource;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
 use PowerTranz\Model\Request\Parts\TokenSource;
+use PowerTranz\Validator\Constraint\PositiveMoney;
 use PowerTranz\Validator\RequestValidator;
 use Ramsey\Uuid\Uuid;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -45,6 +45,7 @@ abstract class SpiRequest implements JsonSerializable
     public readonly string $transactionIdentifier;
 
     public function __construct(
+        #[PositiveMoney(message: 'TotalAmount must be greater than zero.')]
         public readonly Money $totalAmount,
 
         #[Assert\NotBlank(normalizer: 'trim', message: 'OrderIdentifier must not be empty.')]
@@ -65,13 +66,6 @@ abstract class SpiRequest implements JsonSerializable
         public readonly ?string $extendedData = null,
     ) {
         $this->transactionIdentifier = $this->resolveTransactionIdentifier($transactionIdentifier);
-
-        if (!$this->totalAmount->isPositive()) {
-            throw new ValidationException(
-                'SPI request validation failed.',
-                ['totalAmount' => 'TotalAmount must be greater than zero.'],
-            );
-        }
 
         RequestValidator::validate($this, 'SPI request validation failed.');
     }

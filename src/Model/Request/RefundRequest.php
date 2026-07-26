@@ -7,7 +7,7 @@ namespace PowerTranz\Model\Request;
 use Brick\Money\Money;
 use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
-use PowerTranz\Exception\ValidationException;
+use PowerTranz\Validator\Constraint\PositiveMoney;
 use PowerTranz\Validator\RequestValidator;
 use Symfony\Component\Validator\Constraints as Assert;
 use PowerTranz\Model\Request\Parts\Address;
@@ -26,6 +26,7 @@ final class RefundRequest implements JsonSerializable
         #[Assert\NotBlank(normalizer: 'trim', message: 'TransactionIdentifier must not be empty.')]
         public readonly string $transactionIdentifier,
 
+        #[PositiveMoney(message: 'TotalAmount must be greater than zero.')]
         public readonly Money $totalAmount,
 
         #[Assert\NotBlank(normalizer: 'trim', message: 'OrderIdentifier must not be empty.')]
@@ -35,13 +36,6 @@ final class RefundRequest implements JsonSerializable
         public readonly ?string $externalGroupIdentifier = null,
         public readonly ?Address $billingAddress = null,
     ) {
-        if (!$this->totalAmount->isPositive()) {
-            throw new ValidationException(
-                'Refund request validation failed.',
-                ['totalAmount' => 'TotalAmount must be greater than zero.'],
-            );
-        }
-
         RequestValidator::validate($this, 'Refund request validation failed.');
     }
 
