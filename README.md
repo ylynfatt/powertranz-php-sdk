@@ -315,4 +315,4 @@ vendor/bin/php-cs-fixer fix
 
 ## License
 
-MIT
+This SDK is open-sourced software licensed under the [MIT license](LICENSE).
