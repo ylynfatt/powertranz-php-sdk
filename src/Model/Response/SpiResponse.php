@@ -50,7 +50,12 @@ class SpiResponse
     public ?Money $totalAmount;
 
     public bool $approved;
-    public bool $requiresThreeDsChallenge;
+
+    /**
+     * True when the gateway returned RedirectData (IsoResponseCode SP4 or HP0)
+     * that must be rendered in an iframe before the flow can continue.
+     */
+    public bool $requiresRedirect;
 
     /** @var array<string, mixed> */
     private array $rawData = [];
@@ -87,8 +92,8 @@ class SpiResponse
         $isoCode               = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
         $this->isoResponseCode = $isoCode ?? IsoResponseCode::DO_NOT_HONOUR;
 
-        $this->approved                 = $this->isoResponseCode->isApproved();
-        $this->requiresThreeDsChallenge = $this->isoResponseCode->requires3dsChallenge();
+        $this->approved         = $this->isoResponseCode->isApproved();
+        $this->requiresRedirect = $this->isoResponseCode->requiresRedirect();
 
         $txType                = isset($data['TransactionType']) ? TransactionType::tryFrom((int) $data['TransactionType']) : null;
         $this->transactionType = $txType;

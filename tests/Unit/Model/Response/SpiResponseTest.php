@@ -19,7 +19,7 @@ final class SpiResponseTest extends TestCase
         $response = SaleResponse::fromArray($data);
 
         self::assertTrue($response->approved);
-        self::assertFalse($response->requiresThreeDsChallenge);
+        self::assertFalse($response->requiresRedirect);
         self::assertSame(IsoResponseCode::APPROVED, $response->isoResponseCode);
         self::assertSame('txn-sale-001', $response->transactionIdentifier);
         self::assertSame('order-456', $response->orderIdentifier);
@@ -66,14 +66,50 @@ final class SpiResponseTest extends TestCase
         self::assertSame('default', $response->getRaw('NonExistentField', 'default'));
     }
 
-    public function testThreeDsChallengeBuildsFromRedirectResponse(): void
+    public function testThreeDsChallengeBuildsFromSp4Response(): void
     {
         $data      = ResponseFixture::loadAsArray('sale_3ds_redirect');
         $challenge = ThreeDSecureChallenge::fromArray($data);
 
         self::assertSame('spi-token-abc123xyz', $challenge->spiToken);
         self::assertSame('txn-3ds-001', $challenge->transactionIdentifier);
-        self::assertTrue($challenge->isIframe());
-        self::assertStringContainsString('<iframe', $challenge->render());
+        self::assertSame('order-3ds-123', $challenge->orderIdentifier);
+        self::assertSame('SPI Preprocessing complete', $challenge->responseMessage);
+
+        // render() returns the gateway document untouched.
+        self::assertStringContainsString('threeDSMethodData', $challenge->render());
+        self::assertStringStartsWith('<!DOCTYPE html>', $challenge->render());
+    }
+
+    public function testIframeWrapsRedirectDataInSrcdoc(): void
+    {
+        $challenge = ThreeDSecureChallenge::fromArray(
+            ResponseFixture::loadAsArray('sale_3ds_redirect')
+        );
+
+        $html = $challenge->iframe();
+
+        self::assertStringStartsWith('<iframe srcdoc="', $html);
+        self::assertStringEndsWith('></iframe>', $html);
+        self::assertStringContainsString('width="100%"', $html);
+        self::assertStringContainsString('height="500"', $html);
+
+        // The document must be escaped so it cannot break out of the attribute.
+        self::assertStringNotContainsString('<form', $html);
+        self::assertStringContainsString('&lt;form', $html);
+        self::assertStringContainsString('&quot;', $html);
+    }
+
+    public function testIframeDimensionsAreOverridableAndEscaped(): void
+    {
+        $challenge = ThreeDSecureChallenge::fromArray(
+            ResponseFixture::loadAsArray('sale_3ds_redirect')
+        );
+
+        self::assertStringContainsString('height="400"', $challenge->iframe('390', '400'));
+        self::assertStringContainsString(
+            'width="&quot; onload=&quot;alert(1)"',
+            $challenge->iframe('" onload="alert(1)'),
+        );
     }
 }

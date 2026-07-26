@@ -5,20 +5,28 @@ declare(strict_types=1);
 namespace PowerTranz\Model\Response;
 
 /**
- * Returned when the gateway responds with IsoResponseCode '3D0'.
+ * Returned when the gateway responds with IsoResponseCode 'SP4' (or 'HP0' for a
+ * Hosted Payment Page), meaning SPI preprocessing is complete and a redirect is
+ * pending.
  *
- * The cardholder must complete the 3DS challenge before the payment can be
- * finalised. Render {@see $redirectHtml} in your page (typically an iframe),
- * then send a {@see \PowerTranz\Model\Request\PaymentRequest} with the
- * {@see $spiToken} once the challenge is complete.
+ * Note that this is *not* signalled by '3D0'. That code means 3DS
+ * authentication has finished, and it arrives later — POSTed by PowerTranz to
+ * your MerchantResponseUrl, not on the response to the initial request.
+ *
+ * The flow from here:
+ *   1. Render {@see iframe()} in the checkout page.
+ *   2. The iframe talks to the 3DS servers and posts the result to your
+ *      MerchantResponseUrl.
+ *   3. Send a {@see \PowerTranz\Model\Request\PaymentRequest} with the
+ *      {@see $spiToken} to complete the payment.
  *
  * SpiTokens are valid for 5 minutes.
  *
  * Example:
- *   $challenge = $client->spi->sale($saleRequest);
- *   if ($challenge instanceof ThreeDSecureChallenge) {
- *       $_SESSION['spi_token'] = $challenge->spiToken;
- *       echo $challenge->render();
+ *   $result = $client->spi->sale($saleRequest);
+ *   if ($result instanceof ThreeDSecureChallenge) {
+ *       $_SESSION['spi_token'] = $result->spiToken;
+ *       echo $result->iframe();
  *   }
  */
 final class ThreeDSecureChallenge
@@ -49,21 +57,39 @@ final class ThreeDSecureChallenge
     }
 
     /**
-     * Returns true if the redirect content contains an iframe element.
-     */
-    public function isIframe(): bool
-    {
-        return stripos($this->redirectHtml, '<iframe') !== false;
-    }
-
-    /**
-     * Returns the raw HTML for embedding in a checkout page.
+     * The raw RedirectData document returned by the gateway.
      *
-     * IMPORTANT: This HTML is provided by the PowerTranz gateway and is trusted
-     * content for 3DS authentication. Do not pass arbitrary user input here.
+     * This is a complete HTML document containing a self-submitting form and
+     * script — it is not itself an iframe, and it must be placed *inside* one.
+     * Use {@see iframe()} unless you are building the wrapper yourself.
+     *
+     * IMPORTANT: This HTML comes from the PowerTranz gateway and is trusted
+     * content for 3DS authentication. Never pass user input through here.
      */
     public function render(): string
     {
         return $this->redirectHtml;
+    }
+
+    /**
+     * Wrap the RedirectData in the iframe documented by PowerTranz:
+     *
+     *   <iframe srcdoc="{RedirectData}" frameborder="0" width="100%" height="500"></iframe>
+     *
+     * The document is escaped for the srcdoc attribute, so the result is safe to
+     * echo directly into a checkout page.
+     *
+     * Once the cardholder completes (or skips) the challenge, the iframe posts
+     * the result to your MerchantResponseUrl. The iframe is short-lived — remove
+     * it and redirect the parent window from your callback page.
+     */
+    public function iframe(string $width = '100%', string $height = '500'): string
+    {
+        return sprintf(
+            '<iframe srcdoc="%s" frameborder="0" width="%s" height="%s"></iframe>',
+            htmlspecialchars($this->redirectHtml, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            htmlspecialchars($width, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+            htmlspecialchars($height, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'),
+        );
     }
 }

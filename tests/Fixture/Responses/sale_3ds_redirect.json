@@ -1,17 +1,12 @@
 {
+    "TransactionType": 1,
+    "Approved": false,
     "TransactionIdentifier": "txn-3ds-001",
-    "OrderIdentifier": "order-3ds-123",
-    "IsoResponseCode": "3D0",
-    "ResponseCode": "SP3",
-    "ResponseMessage": "3DS challenge required",
-    "AuthorizationCode": null,
-    "ReferenceNumber": null,
-    "CardBrand": "VISA",
     "TotalAmount": 75.00,
     "CurrencyCode": "840",
-    "TransactionType": 2,
-    "Approved": false,
-    "PanToken": null,
-    "SpiToken": "spi-token-abc123xyz",
-    "Redirect": "<iframe id=\"3dsIframe\" name=\"3dsIframe\" width=\"390\" height=\"400\" src=\"https://staging.ptranz.com/3ds/challenge?token=abc123\"></iframe>"
+    "IsoResponseCode": "SP4",
+    "ResponseMessage": "SPI Preprocessing complete",
+    "OrderIdentifier": "order-3ds-123",
+    "RedirectData": "<!DOCTYPE html><html><head></head><body><form id=\"tdsMethodForm\" method=\"POST\" action=\"https://acs.example.com/3ds2/method\"><input type=\"hidden\" name=\"threeDSMethodData\" value=\"eyJ0aHJlZURTU2VydmVyVHJhbnNJRCI6ImFiYzEyMyJ9\"></form><script>document.getElementById('tdsMethodForm').submit();</script></body></html>",
+    "SpiToken": "spi-token-abc123xyz"
 }

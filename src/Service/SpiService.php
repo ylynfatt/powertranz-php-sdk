@@ -42,7 +42,7 @@ final class SpiService extends AbstractService
         $data    = $this->post('spi/auth', $request);
         $isoCode = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
 
-        if ($isoCode === IsoResponseCode::THREE_DS_REDIRECT) {
+        if ($isoCode?->requiresRedirect() === true) {
             return ThreeDSecureChallenge::fromArray($data);
         }
 
@@ -61,7 +61,7 @@ final class SpiService extends AbstractService
         $data    = $this->post('spi/sale', $request);
         $isoCode = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
 
-        if ($isoCode === IsoResponseCode::THREE_DS_REDIRECT) {
+        if ($isoCode?->requiresRedirect() === true) {
             return ThreeDSecureChallenge::fromArray($data);
         }
 
@@ -82,7 +82,7 @@ final class SpiService extends AbstractService
         $data    = $this->post('spi/riskmgmt', $request);
         $isoCode = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
 
-        if ($isoCode === IsoResponseCode::THREE_DS_REDIRECT) {
+        if ($isoCode?->requiresRedirect() === true) {
             return ThreeDSecureChallenge::fromArray($data);
         }
 

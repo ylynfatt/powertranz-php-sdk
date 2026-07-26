@@ -280,7 +280,7 @@ A **declined** transaction is not an exception. Check `$response->approved` and 
 
 Every response extends `SpiResponse` and exposes:
 
-`isoResponseCode`, `responseCode`, `responseMessage`, `transactionIdentifier`, `orderIdentifier`, `referenceNumber`, `authorizationCode`, `panToken`, `spiToken`, `cardBrand`, `transactionType`, `totalAmount`, `approved`, `requiresThreeDsChallenge`
+`isoResponseCode`, `responseCode`, `responseMessage`, `transactionIdentifier`, `orderIdentifier`, `referenceNumber`, `authorizationCode`, `panToken`, `spiToken`, `cardBrand`, `transactionType`, `totalAmount`, `approved`, `requiresRedirect`
 
 Fields the SDK doesn't model yet remain reachable via `getRaw('FieldName')`, so a gateway-side addition never blocks you.
 

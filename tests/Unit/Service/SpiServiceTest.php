@@ -8,6 +8,7 @@ use Brick\Money\Money;
 use PHPUnit\Framework\TestCase;
 use PowerTranz\Config\Configuration;
 use PowerTranz\Enum\CurrencyCode;
+use PowerTranz\Enum\IsoResponseCode;
 use PowerTranz\Exception\AuthenticationException;
 use PowerTranz\Exception\ValidationException;
 use PowerTranz\Model\Request\AuthRequest;
@@ -47,7 +48,11 @@ final class SpiServiceTest extends TestCase
         self::assertTrue($result->approved);
     }
 
-    public function testSaleReturnsThreeDsChallengeOnRedirectCode(): void
+    /**
+     * The first SPI call returns SP4 ("SPI Preprocessing complete") with
+     * RedirectData and an SpiToken — this is what must produce a challenge.
+     */
+    public function testSaleReturnsThreeDsChallengeOnSp4(): void
     {
         $this->httpClient->addResponse(200, ResponseFixture::load('sale_3ds_redirect'));
 
@@ -55,7 +60,24 @@ final class SpiServiceTest extends TestCase
 
         self::assertInstanceOf(ThreeDSecureChallenge::class, $result);
         self::assertSame('spi-token-abc123xyz', $result->spiToken);
-        self::assertTrue($result->isIframe());
+        self::assertStringContainsString('threeDSMethodData', $result->redirectHtml);
+    }
+
+    /**
+     * 3D0 is the authentication result delivered to the MerchantResponseUrl,
+     * not a pending redirect. Reaching it on a sale response means the flow is
+     * already past the challenge, so it must hydrate as a normal SaleResponse.
+     */
+    public function testThreeDsCompleteCodeIsNotTreatedAsAChallenge(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('threeds_authentication_result'));
+
+        $result = $this->service->sale($this->makeSaleRequest());
+
+        self::assertInstanceOf(SaleResponse::class, $result);
+        self::assertNotInstanceOf(ThreeDSecureChallenge::class, $result);
+        self::assertFalse($result->requiresRedirect);
+        self::assertSame(IsoResponseCode::THREE_DS_COMPLETE, $result->isoResponseCode);
     }
 
     public function testAuthorizeReturnsAuthResponse(): void
