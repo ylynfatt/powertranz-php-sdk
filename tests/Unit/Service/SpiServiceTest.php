@@ -12,8 +12,8 @@ use PowerTranz\Enum\IsoResponseCode;
 use PowerTranz\Exception\AuthenticationException;
 use PowerTranz\Exception\ValidationException;
 use PowerTranz\Model\Request\AuthRequest;
-use PowerTranz\Model\Request\Parts\BrowserDetails;
 use PowerTranz\Model\Request\Parts\CardSource;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
 use PowerTranz\Model\Request\PaymentRequest;
 use PowerTranz\Model\Request\SaleRequest;
@@ -212,35 +212,102 @@ final class SpiServiceTest extends TestCase
         }
     }
 
-    public function testSaleWithThreeDsIncludesThreeDsBlock(): void
+    /**
+     * The wire format for a 3DS sale, asserted field by field against the
+     * payload published in the SPI-3DS integration guide: ThreeDSecure is a
+     * top-level boolean, and the parameters plus the callback URL sit under
+     * ExtendedData.
+     */
+    public function testThreeDsSaleMatchesDocumentedPayload(): void
     {
-        $this->httpClient->addResponse(200, ResponseFixture::load('sale_approved'));
-
-        $browserDetails = new BrowserDetails(
-            acceptHeader:  '*/*',
-            colorDepth:    '24',
-            javaEnabled:   false,
-            language:      'en-US',
-            screenHeight:  900,
-            screenWidth:   1440,
-            timeZone:      '-300',
-            userAgent:     'Mozilla/5.0',
-        );
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_3ds_redirect'));
 
         $request = new SaleRequest(
             totalAmount:     Money::of('99.00', 'USD'),
             orderIdentifier: 'order-3ds',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
-            threeDSecure:    ThreeDSecure::withBrowser($browserDetails),
+            threeDSecure:    true,
+            extendedData:    ExtendedData::forThreeDSecure(
+                merchantResponseUrl: 'https://merchant.example.com/3ds/callback',
+                threeDSecure:        new ThreeDSecure(
+                    challengeWindowSize: ThreeDSecure::WINDOW_600x400,
+                    challengeIndicator:  ThreeDSecure::CHALLENGE_NO_PREFERENCE,
+                ),
+            ),
         );
 
         $this->service->sale($request);
 
         $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
 
-        self::assertArrayHasKey('ThreeDSecure', $body);
-        self::assertTrue($body['ThreeDSecure']['Enabled']);
-        self::assertArrayHasKey('BrowserDetails', $body['ThreeDSecure']);
+        // Top-level flag is a boolean, not an object.
+        self::assertTrue($body['ThreeDSecure']);
+        self::assertIsBool($body['ThreeDSecure']);
+
+        self::assertSame(
+            [
+                'ThreeDSecure' => [
+                    'ChallengeWindowSize' => 4,
+                    'ChallengeIndicator'  => '01',
+                ],
+                'MerchantResponseUrl' => 'https://merchant.example.com/3ds/callback',
+            ],
+            $body['ExtendedData'],
+        );
+
+        // ChallengeWindowSize is an integer on the wire, never a padded string.
+        self::assertIsInt($body['ExtendedData']['ThreeDSecure']['ChallengeWindowSize']);
+    }
+
+    public function testNonThreeDsSaleSendsFalseAndOmitsExtendedData(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_approved'));
+
+        $this->service->sale($this->makeSaleRequest());
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertFalse($body['ThreeDSecure']);
+        self::assertArrayNotHasKey('ExtendedData', $body);
+    }
+
+    /**
+     * Enabling 3DS without ExtendedData means no MerchantResponseUrl, so the
+     * gateway would have nowhere to return the cardholder. Caught locally.
+     */
+    public function testThreeDsWithoutExtendedDataIsRejectedLocally(): void
+    {
+        try {
+            new SaleRequest(
+                totalAmount:     Money::of('99.00', 'USD'),
+                orderIdentifier: 'order-3ds',
+                source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+                threeDSecure:    true,
+            );
+            self::fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('extendedData', $e->getErrors());
+            self::assertStringContainsString('MerchantResponseUrl', $e->getErrors()['extendedData']);
+        }
+
+        self::assertSame(0, $this->httpClient->getRequestCount());
+    }
+
+    public function testMerchantResponseUrlMustBeAValidUrl(): void
+    {
+        try {
+            ExtendedData::forThreeDSecure('not-a-url');
+            self::fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('merchantResponseUrl', $e->getErrors());
+        }
+    }
+
+    public function testChallengeWindowSizeIsConstrainedToDocumentedRange(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new ThreeDSecure(challengeWindowSize: 6);
     }
 
     public function testValidationExceptionThrownBeforeHttpCall(): void

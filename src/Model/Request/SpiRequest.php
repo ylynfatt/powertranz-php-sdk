@@ -9,12 +9,13 @@ use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Model\Request\Parts\Address;
 use PowerTranz\Model\Request\Parts\CardSource;
-use PowerTranz\Model\Request\Parts\ThreeDSecure;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\TokenSource;
 use PowerTranz\Validator\Constraint\PositiveMoney;
 use PowerTranz\Validator\RequestValidator;
 use Ramsey\Uuid\Uuid;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Abstract base for all SPI transaction requests (Auth, Sale, RiskMgmt).
@@ -59,15 +60,61 @@ abstract class SpiRequest implements JsonSerializable
 
         ?string $transactionIdentifier = null,
 
+        /**
+         * Top-level {@code ThreeDSecure} flag — a plain boolean switching 3DS on
+         * for this transaction. The parameters live in
+         * {@see ExtendedData::$threeDSecure}.
+         *
+         * Defaults to false so a non-3DS transaction needs nothing further; set
+         * it true and supply {@see $extendedData} to authenticate.
+         */
+        public readonly bool $threeDSecure = false,
+
+        #[Assert\Valid]
+        public readonly ?ExtendedData $extendedData = null,
+
         public readonly bool $tokenize = false,
-        public readonly ?ThreeDSecure $threeDSecure = null,
         public readonly ?Address $billingAddress = null,
         public readonly ?Address $shippingAddress = null,
-        public readonly ?string $extendedData = null,
+        public readonly ?bool $addressMatch = null,
     ) {
         $this->transactionIdentifier = $this->resolveTransactionIdentifier($transactionIdentifier);
 
         RequestValidator::validate($this, 'SPI request validation failed.');
+    }
+
+    /**
+     * Cross-field constraint: enabling 3DS obliges the caller to supply the
+     * parameters the gateway needs to run it.
+     *
+     * Without ExtendedData there is no MerchantResponseUrl, and without that
+     * PowerTranz has nowhere to post the authentication result — the cardholder
+     * completes the challenge in the iframe and control never returns. The
+     * gateway rejects such requests, so catching it locally turns an opaque
+     * remote failure into a named field error.
+     */
+    #[Assert\Callback]
+    public function validateThreeDSecureParameters(ExecutionContextInterface $context): void
+    {
+        if (!$this->threeDSecure) {
+            return;
+        }
+
+        if ($this->extendedData === null) {
+            $context
+                ->buildViolation('ExtendedData with a MerchantResponseUrl is required when ThreeDSecure is enabled.')
+                ->atPath('extendedData')
+                ->addViolation();
+
+            return;
+        }
+
+        if ($this->extendedData->threeDSecure === null) {
+            $context
+                ->buildViolation('ExtendedData.ThreeDSecure parameters are required when ThreeDSecure is enabled.')
+                ->atPath('extendedData.threeDSecure')
+                ->addViolation();
+        }
     }
 
     /**
@@ -107,17 +154,14 @@ abstract class SpiRequest implements JsonSerializable
     public function jsonSerialize(): mixed
     {
         $data = [
+            'TransactionIdentifier' => $this->transactionIdentifier,
             'TotalAmount'           => (float) (string) $this->totalAmount->getAmount(),
             'CurrencyCode'          => $this->currencyNumericString(),
-            'OrderIdentifier'       => $this->orderIdentifier,
-            'TransactionIdentifier' => $this->transactionIdentifier,
+            'ThreeDSecure'          => $this->threeDSecure,
             'Source'                => $this->source->jsonSerialize(),
+            'OrderIdentifier'       => $this->orderIdentifier,
             'Tokenize'              => $this->tokenize,
         ];
-
-        if ($this->threeDSecure !== null) {
-            $data['ThreeDSecure'] = $this->threeDSecure->jsonSerialize();
-        }
 
         if ($this->billingAddress !== null) {
             $data['BillingAddress'] = $this->billingAddress->jsonSerialize();
@@ -127,8 +171,12 @@ abstract class SpiRequest implements JsonSerializable
             $data['ShippingAddress'] = $this->shippingAddress->jsonSerialize();
         }
 
+        if ($this->addressMatch !== null) {
+            $data['AddressMatch'] = $this->addressMatch;
+        }
+
         if ($this->extendedData !== null) {
-            $data['ExtendedData'] = $this->extendedData;
+            $data['ExtendedData'] = $this->extendedData->jsonSerialize();
         }
 
         return $data;

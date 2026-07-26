@@ -8,19 +8,20 @@ declare(strict_types=1);
  * This script demonstrates the two-step 3DS flow conceptually.
  * In a real web app:
  *   - Step 1 runs server-side when the customer submits the payment form.
- *   - The challenge HTML is embedded in the page.
- *   - The 3DS issuer posts the result back to your callback URL.
- *   - Step 2 runs in the callback handler with the SpiToken from the session.
+ *   - The RedirectData is rendered in an iframe on the page.
+ *   - PowerTranz POSTs the authentication result to your MerchantResponseUrl.
+ *   - Step 2 runs in that callback handler with the SpiToken from the session.
  *
  * Run:
- *   POWERTRANZ_ID=your-id POWERTRANZ_PASSWORD=your-password php examples/three_ds_flow.php
+ *   POWERTRANZ_ID=your-id POWERTRANZ_PASSWORD=your-password \
+ *   MERCHANT_RESPONSE_URL=https://your-site/3ds/callback php examples/three_ds_flow.php
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Brick\Money\Money;
-use PowerTranz\Model\Request\Parts\BrowserDetails;
 use PowerTranz\Model\Request\Parts\CardSource;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
 use PowerTranz\Model\Request\PaymentRequest;
 use PowerTranz\Model\Request\SaleRequest;
@@ -32,52 +33,57 @@ $client = new PowerTranzClient(
     getenv('POWERTRANZ_PASSWORD') ?: throw new \RuntimeException('POWERTRANZ_PASSWORD required'),
 );
 
+// PowerTranz POSTs the 3DS result here, and redirects the cardholder back to it.
+// It must be a URL PowerTranz can reach — localhost will not work.
+$merchantResponseUrl = getenv('MERCHANT_RESPONSE_URL')
+    ?: throw new \RuntimeException('MERCHANT_RESPONSE_URL required');
+
 // -----------------------------------------------------------------------
 // Step 1: Initiate the sale with 3DS enabled.
 //
-// BrowserDetails are normally collected via JavaScript on the checkout page
-// and sent to your server with the payment form submission.
+// The top-level ThreeDSecure flag switches authentication on; the parameters
+// and the callback URL travel in ExtendedData. No browser/device details are
+// sent — the gateway handles fingerprinting inside the iframe.
 // -----------------------------------------------------------------------
-$browserDetails = new BrowserDetails(
-    acceptHeader:  'text/html,application/xhtml+xml',
-    colorDepth:    '24',
-    javaEnabled:   false,
-    language:      'en-US',
-    screenHeight:  900,
-    screenWidth:   1440,
-    timeZone:      '-300',
-    userAgent:     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-);
-
 $sale = new SaleRequest(
     totalAmount:     Money::of('75.00', 'USD'),
     orderIdentifier: 'order-' . uniqid(),
-    source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
-    threeDSecure:    ThreeDSecure::withBrowser($browserDetails),
+    source:          new CardSource('4012000000020006', '2512', '323', 'John Doe'),
+    threeDSecure:    true,
+    extendedData:    ExtendedData::forThreeDSecure(
+        merchantResponseUrl: $merchantResponseUrl,
+        threeDSecure:        new ThreeDSecure(
+            challengeWindowSize: ThreeDSecure::WINDOW_600x400,
+            challengeIndicator:  ThreeDSecure::CHALLENGE_NO_PREFERENCE,
+        ),
+    ),
 );
 
 $result = $client->spi->sale($sale);
 
 if (!$result instanceof ThreeDSecureChallenge) {
-    // Frictionless flow: issuer authenticated without a challenge
+    // The gateway skipped preprocessing entirely — nothing to render.
     echo $result->approved
-        ? "✓ Frictionless 3DS — approved: {$result->transactionIdentifier}\n"
-        : "✗ Declined (frictionless): {$result->responseMessage}\n";
+        ? "✓ Approved without redirect: {$result->transactionIdentifier}\n"
+        : "✗ Declined: {$result->responseMessage} ({$result->isoResponseCode->value})\n";
     exit(0);
 }
 
-// 3DS challenge required
-echo "3DS challenge required.\n";
-echo "SpiToken: {$result->spiToken} (valid 5 minutes)\n";
-echo "In a real app, store this token in the session and render the HTML below:\n\n";
-echo $result->render() . "\n\n";
+// IsoResponseCode SP4 — preprocessing complete, redirect pending.
+echo "Redirect pending ({$result->responseMessage}).\n";
+echo "SpiToken: {$result->spiToken} (valid 5 minutes)\n\n";
+echo "Store the token in the session and render this in your checkout page:\n\n";
+echo $result->iframe() . "\n\n";
 
 // -----------------------------------------------------------------------
-// Step 2: After the cardholder completes the 3DS challenge, your callback
-// handler receives a POST from the 3DS issuer. Retrieve the SpiToken from
-// your session and complete the payment.
+// Step 2: Runs in your MerchantResponseUrl handler.
 //
-// For this demo we simulate immediately (no real challenge occurs).
+// The iframe posts the 3DS result there (IsoResponseCode 3D0 on success, or
+// 3D1 when the card does not support 3DS2). Remove the iframe, then complete
+// the payment with the SpiToken — within 5 minutes.
+//
+// Note the result POSTed to your callback is the *authentication* outcome, not
+// a financial one. No funds move until the payment completion below.
 // -----------------------------------------------------------------------
 echo "Simulating payment completion with SpiToken...\n";
 
@@ -87,5 +93,5 @@ if ($payment->approved) {
     echo "✓ Payment complete: {$payment->transactionIdentifier}\n";
     echo "  Auth code: {$payment->authorizationCode}\n";
 } else {
-    echo "✗ Payment failed: {$payment->responseMessage}\n";
+    echo "✗ Payment failed: {$payment->responseMessage} ({$payment->isoResponseCode->value})\n";
 }

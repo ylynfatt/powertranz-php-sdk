@@ -50,7 +50,11 @@ if (!$firstResult->approved) {
     exit(1);
 }
 
-$panToken = $firstResult->panToken;
+// An approved response does not guarantee a token: tokenisation is a separate
+// step and PanToken is absent if it did not run.
+$panToken = $firstResult->panToken
+    ?? throw new \RuntimeException('Charge approved but no PanToken was returned — was Tokenize enabled?');
+
 echo "✓ Approved. PanToken: {$panToken}\n";
 echo "  (Store this token in your database against the customer record)\n\n";
 
