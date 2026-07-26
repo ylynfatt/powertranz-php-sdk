@@ -92,14 +92,46 @@ final class RequestValidatorTest extends TestCase
     // TokenSource
     // -----------------------------------------------------------------------
 
-    public function testTokenSourceEmptyPanTokenThrowsValidationException(): void
+    public function testTokenSourceEmptyTokenThrowsValidationException(): void
     {
         try {
             new TokenSource('');
             self::fail('Expected ValidationException was not thrown.');
         } catch (ValidationException $e) {
-            self::assertArrayHasKey('panToken', $e->getErrors());
+            self::assertArrayHasKey('token', $e->getErrors());
         }
+    }
+
+    /**
+     * The gateway returns the token as PanToken but expects it back as
+     * Source.Token — sending PanToken means it sees no card data at all.
+     */
+    public function testTokenSourceSerializesToTokenNotPanToken(): void
+    {
+        $source = new TokenSource('tok_abc123');
+
+        self::assertSame(['Token' => 'tok_abc123'], $source->jsonSerialize());
+    }
+
+    public function testFacTokenCarriesPg2TokenType(): void
+    {
+        $source = TokenSource::fac('tok_abc123', '123');
+
+        self::assertSame(
+            [
+                'Token'     => 'tok_abc123',
+                'TokenType' => 'PG2',
+                'CardCvv'   => '123',
+            ],
+            $source->jsonSerialize(),
+        );
+    }
+
+    public function testUnknownTokenTypeIsRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new TokenSource('tok_abc123', tokenType: 'PG9');
     }
 
     public function testTokenSourceInvalidCvvThrowsValidationException(): void

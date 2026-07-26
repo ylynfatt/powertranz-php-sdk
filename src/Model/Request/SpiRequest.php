@@ -79,9 +79,11 @@ abstract class SpiRequest implements JsonSerializable
         #[Assert\Valid]
         public readonly ?ExtendedData $extendedData = null,
 
-        public readonly bool $tokenize = false,
+        #[Assert\Valid]
         public readonly ?Address $billingAddress = null,
+        #[Assert\Valid]
         public readonly ?Address $shippingAddress = null,
+
         public readonly ?bool $addressMatch = null,
     ) {
         $this->transactionIdentifier = $this->resolveTransactionIdentifier($transactionIdentifier);
@@ -192,7 +194,6 @@ abstract class SpiRequest implements JsonSerializable
             'CurrencyCode'          => $this->currencyNumericString(),
             'ThreeDSecure'          => $this->threeDSecure,
             'OrderIdentifier'       => $this->orderIdentifier,
-            'Tokenize'              => $this->tokenize,
         ];
 
         if ($this->source !== null) {
