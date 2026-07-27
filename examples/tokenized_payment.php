@@ -54,7 +54,7 @@ if ($result instanceof ThreeDSecureChallenge) {
 // $result->approved is false — check the token instead.
 $panToken = $result->panToken
     ?? throw new \RuntimeException(
-        "No PanToken returned: {$result->responseMessage} ({$result->isoResponseCode->value})"
+        "No PanToken returned: {$result->responseMessage} ({$result->isoResponseCodeValue})"
     );
 
 echo "✓ Tokenised ({$result->responseMessage}). PanToken: {$panToken}\n";
@@ -87,5 +87,5 @@ if ($repeatResult->approved) {
     echo "✓ Token charge approved: {$repeatResult->transactionIdentifier}\n";
     echo "  Auth code: {$repeatResult->authorizationCode}\n";
 } else {
-    echo "✗ Token charge declined: {$repeatResult->responseMessage} ({$repeatResult->isoResponseCode->value})\n";
+    echo "✗ Token charge declined: {$repeatResult->responseMessage} ({$repeatResult->isoResponseCodeValue})\n";
 }

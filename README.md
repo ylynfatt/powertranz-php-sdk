@@ -240,7 +240,21 @@ If `cardholderInfo` is present, the issuer wants that message shown to the cardh
 | `3D1` | 3DS not supported by the card | Same; proceed as standard e-commerce |
 | `00` | Issuer approved | Step 2, after payment completion |
 
-Prefer the helpers over comparing codes by hand: `requiresRedirect()`, `isApproved()`, `isNonFinancialSuccess()`, `isDeclined()`.
+Prefer the helpers over comparing codes by hand: `requiresRedirect()`, `isApproved()`, `isNonFinancialSuccess()`, `isDeclined()`, `isRetryable()`, `requiresCardRetention()`.
+
+All 92 documented ISO 8583 codes are modelled. `isoResponseCode` is **nullable** — card networks add codes, so it is null for anything unrecognised, and `isoResponseCodeValue` always holds the raw string the gateway sent. Nothing is ever substituted:
+
+```php
+if ($payment->isoResponseCode?->isRetryable()) {
+    // 91 issuer inoperative, 96 system malfunction, 98 host unreachable…
+    // Transient. Retrying is reasonable.
+}
+
+// Always safe to log, even for a code the SDK does not know:
+error_log("gateway returned {$payment->isoResponseCodeValue}");
+```
+
+`isRetryable()` matters operationally: `91` (issuer unreachable) may succeed on a retry, while `05` (do not honour) will not, and retrying it risks tripping issuer velocity rules.
 
 3DS requires `CardholderName` on the source, plus an **email address and/or phone number** on the billing address. Omitting both fails the authentication.
 

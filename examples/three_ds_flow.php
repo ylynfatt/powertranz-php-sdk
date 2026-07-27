@@ -65,7 +65,7 @@ if (!$result instanceof ThreeDSecureChallenge) {
     // The gateway skipped preprocessing entirely — nothing to render.
     echo $result->approved
         ? "✓ Approved without redirect: {$result->transactionIdentifier}\n"
-        : "✗ Declined: {$result->responseMessage} ({$result->isoResponseCode->value})\n";
+        : "✗ Declined: {$result->responseMessage} ({$result->isoResponseCodeValue})\n";
     exit(0);
 }
 
@@ -93,5 +93,5 @@ if ($payment->approved) {
     echo "✓ Payment complete: {$payment->transactionIdentifier}\n";
     echo "  Auth code: {$payment->authorizationCode}\n";
 } else {
-    echo "✗ Payment failed: {$payment->responseMessage} ({$payment->isoResponseCode->value})\n";
+    echo "✗ Payment failed: {$payment->responseMessage} ({$payment->isoResponseCodeValue})\n";
 }

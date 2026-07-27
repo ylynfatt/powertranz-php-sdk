@@ -67,6 +67,64 @@ final class SpiResponseTest extends TestCase
     }
 
     /**
+     * An unrecognised code must not be reported as some other specific code.
+     *
+     * The previous fallback to DO_NOT_HONOUR meant a gateway 91 ("issuer or
+     * switch inoperative" — transient, retryable) surfaced to the merchant as 05,
+     * a flat refusal. The raw string is now always preserved.
+     */
+    public function testUnknownCodeIsNotCoercedToADecline(): void
+    {
+        $response = SaleResponse::fromArray([
+            'IsoResponseCode' => 'ZZ',
+            'ResponseMessage' => 'Some future condition',
+        ]);
+
+        self::assertNull($response->isoResponseCode);
+        self::assertSame('ZZ', $response->isoResponseCodeValue);
+        self::assertNotSame('05', $response->isoResponseCodeValue);
+
+        // Fails closed: unknown is never approved, never a pending redirect.
+        self::assertFalse($response->approved);
+        self::assertFalse($response->requiresRedirect);
+    }
+
+    /**
+     * The regression this came from: 91 now resolves instead of becoming 05.
+     */
+    public function testIssuerInoperativeResolvesWithItsOwnMessage(): void
+    {
+        $response = SaleResponse::fromArray([
+            'IsoResponseCode' => '91',
+            'ResponseMessage' => 'Issuer or Switch not available. Please try again later.',
+        ]);
+
+        self::assertSame(IsoResponseCode::ISSUER_OR_SWITCH_INOPERATIVE, $response->isoResponseCode);
+        self::assertSame('91', $response->isoResponseCodeValue);
+        self::assertSame('Issuer or switch inoperative', $response->isoResponseCode->label());
+        self::assertTrue($response->isoResponseCode->isRetryable());
+        self::assertFalse($response->approved);
+    }
+
+    public function testRawCodeIsPreservedForKnownCodesToo(): void
+    {
+        $response = SaleResponse::fromArray(['IsoResponseCode' => '00']);
+
+        self::assertSame('00', $response->isoResponseCodeValue);
+        self::assertSame(IsoResponseCode::APPROVED, $response->isoResponseCode);
+        self::assertTrue($response->approved);
+    }
+
+    public function testMissingCodeYieldsNullEnumAndEmptyRaw(): void
+    {
+        $response = SaleResponse::fromArray(['ResponseMessage' => 'nothing']);
+
+        self::assertNull($response->isoResponseCode);
+        self::assertSame('', $response->isoResponseCodeValue);
+        self::assertFalse($response->approved);
+    }
+
+    /**
      * The gateway names this field RRN, not ReferenceNumber. Reading the wrong
      * key left $referenceNumber permanently null while the README and examples
      * advertised it.

@@ -28,7 +28,26 @@ use PowerTranz\Enum\TransactionType;
  */
 class SpiResponse
 {
-    public IsoResponseCode $isoResponseCode;
+    /**
+     * The gateway's response code as a typed enum.
+     *
+     * {@code null} when the gateway returned a code the SDK does not model — card
+     * networks add codes over time. When it is null, read
+     * {@see $isoResponseCodeValue} for the code the gateway actually sent.
+     *
+     * This is deliberately nullable rather than defaulted. An earlier version
+     * fell back to DO_NOT_HONOUR (05), which meant an unrecognised 91 ("issuer or
+     * switch inoperative", worth retrying) was reported as a flat refusal — a
+     * materially different instruction to the merchant.
+     */
+    public ?IsoResponseCode $isoResponseCode;
+
+    /**
+     * The raw IsoResponseCode string exactly as the gateway sent it. Never
+     * substituted or inferred, so it can always be logged and trusted.
+     */
+    public string $isoResponseCodeValue;
+
     public string $responseCode;
     public string $responseMessage;
     public string $transactionIdentifier;
@@ -93,11 +112,13 @@ class SpiResponse
         $this->spiToken              = isset($data['SpiToken']) && $data['SpiToken'] !== '' ? (string) $data['SpiToken'] : null;
         $this->cardBrand             = isset($data['CardBrand']) ? (string) $data['CardBrand'] : null;
 
-        $isoCode               = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
-        $this->isoResponseCode = $isoCode ?? IsoResponseCode::DO_NOT_HONOUR;
+        $this->isoResponseCodeValue = (string) ($data['IsoResponseCode'] ?? '');
+        $this->isoResponseCode      = IsoResponseCode::tryFrom($this->isoResponseCodeValue);
 
-        $this->approved         = $this->isoResponseCode->isApproved();
-        $this->requiresRedirect = $this->isoResponseCode->requiresRedirect();
+        // Both fail closed on an unknown code: never report an unrecognised
+        // response as approved, and never render an absent redirect.
+        $this->approved         = $this->isoResponseCode?->isApproved() ?? false;
+        $this->requiresRedirect = $this->isoResponseCode?->requiresRedirect() ?? false;
 
         $txType                = isset($data['TransactionType']) ? TransactionType::tryFrom((int) $data['TransactionType']) : null;
         $this->transactionType = $txType;
