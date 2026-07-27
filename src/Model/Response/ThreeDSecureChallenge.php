@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PowerTranz\Model\Response;
 
+use PowerTranz\Enum\IsoResponseCode;
+
 /**
  * Returned when the gateway responds with IsoResponseCode 'SP4' (or 'HP0' for a
  * Hosted Payment Page), meaning SPI preprocessing is complete and a redirect is
@@ -37,6 +39,15 @@ final class ThreeDSecureChallenge
         public readonly string $transactionIdentifier,
         public readonly string $orderIdentifier,
         public readonly string $responseMessage,
+
+        /**
+         * The code that produced this challenge — SP4 for a standard SPI
+         * transaction, HP0 when a Hosted Payment Page is involved.
+         *
+         * Retained so callers can tell the two apart and log the gateway's own
+         * answer rather than inferring it from the object's type.
+         */
+        public readonly IsoResponseCode $isoResponseCode = IsoResponseCode::SPI_PREPROCESSING_COMPLETE,
     ) {
     }
 
@@ -52,7 +63,9 @@ final class ThreeDSecureChallenge
             redirectHtml:          (string) ($data['Redirect'] ?? $data['RedirectData'] ?? ''),
             transactionIdentifier: (string) ($data['TransactionIdentifier'] ?? ''),
             orderIdentifier:       (string) ($data['OrderIdentifier'] ?? ''),
-            responseMessage:       (string) ($data['ResponseMessage'] ?? '3DS challenge required'),
+            responseMessage:       (string) ($data['ResponseMessage'] ?? 'SPI Preprocessing complete'),
+            isoResponseCode:       IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''))
+                ?? IsoResponseCode::SPI_PREPROCESSING_COMPLETE,
         );
     }
 

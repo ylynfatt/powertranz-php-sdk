@@ -204,17 +204,29 @@ if ($result instanceof ThreeDSecureChallenge) {
 
 `iframe()` emits the wrapper PowerTranz documents, with the payload escaped for the `srcdoc` attribute. Use `render()` if you need the raw document to wrap yourself.
 
-**Step 2 — complete, in your `merchantResponseUrl` handler.** The iframe posts the 3DS outcome there; remove the iframe, then complete the payment within five minutes:
+**Step 2 — complete, in your `merchantResponseUrl` handler.** Parse the POST with `ThreeDSecureResult::fromCallback()`, then complete the payment within five minutes:
 
 ```php
-$payment = $client->spi->payment(new PaymentRequest($_SESSION['spi_token']));
+use PowerTranz\Model\Response\ThreeDSecureResult;
 
-echo $payment->approved
-    ? "Approved: {$payment->transactionIdentifier}"
-    : "Failed: {$payment->responseMessage}";
+$result = ThreeDSecureResult::fromCallback($_POST);
+
+if ($result->canCompletePayment()) {
+    $payment = $client->spi->payment(new PaymentRequest($result->spiToken));
+
+    echo $payment->approved
+        ? "Approved: {$payment->transactionIdentifier}"
+        : "Failed: {$payment->responseMessage}";
+}
 ```
 
 The result posted to your callback is the **authentication** outcome, not a financial one — no funds move until step 2.
+
+> **The callback body is not JSON.** The integration guide shows the result as a JSON document, but it arrives `application/x-www-form-urlencoded` with three fields — `Response`, `TransactionIdentifier` and `SpiToken` — and the whole authentication document is nested inside `Response` as a JSON *string*. Reading `$_POST['IsoResponseCode']` finds nothing. `fromCallback()` unwraps it; it also accepts a JSON body or an already-decoded `Response`.
+
+`ThreeDSecureResult` exposes `spiToken`, `isoResponseCode`, `responseMessage`, `authenticationStatus`, `eci`, `cavv`, `protocolVersion`, `dsTransId`, `panToken`, `cardBrand`, `cardholderInfo`, plus `getRaw()` for anything unmodelled. The helpers are `isAuthenticated()` (`Y` or `A`), `isThreeDsUnsupported()` (`3D1`), and `canCompletePayment()`.
+
+If `cardholderInfo` is present, the issuer wants that message shown to the cardholder.
 
 ### Reading the response codes
 

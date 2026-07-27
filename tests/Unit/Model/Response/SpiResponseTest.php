@@ -113,6 +113,32 @@ final class SpiResponseTest extends TestCase
         self::assertStringStartsWith('<!DOCTYPE html>', $challenge->render());
     }
 
+    /**
+     * The challenge must retain the code that produced it, so callers can tell
+     * an SPI redirect (SP4) from a hosted-page one (HP0) and log what the
+     * gateway actually said.
+     */
+    public function testChallengeRetainsIsoResponseCode(): void
+    {
+        $challenge = ThreeDSecureChallenge::fromArray(
+            ResponseFixture::loadAsArray('sale_3ds_redirect')
+        );
+
+        self::assertSame(IsoResponseCode::SPI_PREPROCESSING_COMPLETE, $challenge->isoResponseCode);
+        self::assertSame('SP4', $challenge->isoResponseCode->value);
+    }
+
+    public function testChallengeRetainsHostedPageCode(): void
+    {
+        $challenge = ThreeDSecureChallenge::fromArray([
+            'SpiToken'        => 't',
+            'RedirectData'    => '<html></html>',
+            'IsoResponseCode' => 'HP0',
+        ]);
+
+        self::assertSame(IsoResponseCode::HPP_PREPROCESSING_COMPLETE, $challenge->isoResponseCode);
+    }
+
     public function testIframeWrapsRedirectDataInSrcdoc(): void
     {
         $challenge = ThreeDSecureChallenge::fromArray(
