@@ -350,7 +350,16 @@ Every response extends `SpiResponse` and exposes:
 
 `isoResponseCode`, `responseCode`, `responseMessage`, `transactionIdentifier`, `orderIdentifier`, `referenceNumber`, `authorizationCode`, `panToken`, `spiToken`, `cardBrand`, `transactionType`, `totalAmount`, `approved`, `requiresRedirect`
 
-Fields the SDK doesn't model yet remain reachable via `getRaw('FieldName')`, so a gateway-side addition never blocks you.
+Every one of those is a **projection** of the gateway response, not a copy of it. Some keys are renamed (`RRN` becomes `referenceNumber`), some values are converted (`totalAmount` becomes a `Money`, normalised to 2dp), and some are computed by the SDK rather than sent at all (`approved`, `requiresRedirect`, `isoResponseCode`'s enum case and `label()`).
+
+When you need the gateway's own words — audit logs, support tickets, debugging an unmodelled field — use the raw accessors, available on `SpiResponse`, `ThreeDSecureChallenge` and `ThreeDSecureResult` alike:
+
+```php
+$response->getRaw('FieldName');   // one field, untouched
+$response->raw();                 // the whole decoded payload, untouched
+```
+
+`raw()` is the safest thing to log: it never renames, coerces, or infers.
 
 ## Examples
 

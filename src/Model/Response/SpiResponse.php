@@ -162,4 +162,22 @@ class SpiResponse
     {
         return $this->rawData[$key] ?? $default;
     }
+
+    /**
+     * The complete decoded response exactly as the gateway sent it — no renamed
+     * keys, no type coercion, no computed fields.
+     *
+     * Every typed property on this class is a projection of this array: some keys
+     * are renamed (RRN becomes {@see $referenceNumber}), some values are converted
+     * ({@see $totalAmount} becomes a Money, amounts normalise to 2dp), and some
+     * properties are derived rather than sent at all ({@see $approved},
+     * {@see $requiresRedirect}). Use this when you need the gateway's own words —
+     * for audit logs, support tickets, or debugging a field the SDK hasn't modelled.
+     *
+     * @return array<string, mixed>
+     */
+    public function raw(): array
+    {
+        return $this->rawData;
+    }
 }

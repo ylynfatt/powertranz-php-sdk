@@ -48,6 +48,13 @@ final class ThreeDSecureChallenge
          * answer rather than inferring it from the object's type.
          */
         public readonly IsoResponseCode $isoResponseCode = IsoResponseCode::SPI_PREPROCESSING_COMPLETE,
+
+        /**
+         * The complete decoded response, so nothing the gateway sent is lost.
+         *
+         * @var array<string, mixed>
+         */
+        private readonly array $rawData = [],
     ) {
     }
 
@@ -66,7 +73,27 @@ final class ThreeDSecureChallenge
             responseMessage:       (string) ($data['ResponseMessage'] ?? 'SPI Preprocessing complete'),
             isoResponseCode:       IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''))
                 ?? IsoResponseCode::SPI_PREPROCESSING_COMPLETE,
+            rawData:               $data,
         );
+    }
+
+    /**
+     * Any field from the gateway response, including ones this class does not
+     * model — TotalAmount, CurrencyCode, TransactionType and so on.
+     */
+    public function getRaw(string $key, mixed $default = null): mixed
+    {
+        return $this->rawData[$key] ?? $default;
+    }
+
+    /**
+     * The complete decoded response exactly as the gateway sent it.
+     *
+     * @return array<string, mixed>
+     */
+    public function raw(): array
+    {
+        return $this->rawData;
     }
 
     /**

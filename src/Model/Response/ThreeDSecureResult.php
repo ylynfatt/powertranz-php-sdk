@@ -37,7 +37,7 @@ use PowerTranz\Enum\IsoResponseCode;
 final class ThreeDSecureResult
 {
     /**
-     * @param array<string, mixed> $raw The decoded Response document.
+     * @param array<string, mixed> $rawData The decoded Response document.
      */
     private function __construct(
         public readonly string $spiToken,
@@ -61,7 +61,7 @@ final class ThreeDSecureResult
         /** Message the issuer wants shown to the cardholder, when present. */
         public readonly ?string $cardholderInfo,
 
-        public readonly array $raw,
+        private readonly array $rawData,
     ) {
     }
 
@@ -135,7 +135,7 @@ final class ThreeDSecureResult
             protocolVersion:       $str($get($threeDs, 'ProtocolVersion')),
             dsTransId:             $str($get($threeDs, 'DsTransId')),
             cardholderInfo:        $str($get($threeDs, 'CardholderInfo')),
-            raw:                   $response,
+            rawData:               $response,
         );
     }
 
@@ -174,6 +174,16 @@ final class ThreeDSecureResult
      */
     public function getRaw(string $key, mixed $default = null): mixed
     {
-        return $this->raw[$key] ?? $default;
+        return $this->rawData[$key] ?? $default;
+    }
+
+    /**
+     * The complete decoded Response document exactly as the gateway sent it.
+     *
+     * @return array<string, mixed>
+     */
+    public function raw(): array
+    {
+        return $this->rawData;
     }
 }
