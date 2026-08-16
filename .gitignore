@@ -7,4 +7,5 @@ coverage/
 .env.local
 .idea
 .vscode
+.phpactor.json
 .DS_Store
