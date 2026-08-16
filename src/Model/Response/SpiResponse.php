@@ -28,7 +28,26 @@ use PowerTranz\Enum\TransactionType;
  */
 class SpiResponse
 {
-    public IsoResponseCode $isoResponseCode;
+    /**
+     * The gateway's response code as a typed enum.
+     *
+     * {@code null} when the gateway returned a code the SDK does not model — card
+     * networks add codes over time. When it is null, read
+     * {@see $isoResponseCodeValue} for the code the gateway actually sent.
+     *
+     * This is deliberately nullable rather than defaulted. An earlier version
+     * fell back to DO_NOT_HONOUR (05), which meant an unrecognised 91 ("issuer or
+     * switch inoperative", worth retrying) was reported as a flat refusal — a
+     * materially different instruction to the merchant.
+     */
+    public ?IsoResponseCode $isoResponseCode;
+
+    /**
+     * The raw IsoResponseCode string exactly as the gateway sent it. Never
+     * substituted or inferred, so it can always be logged and trusted.
+     */
+    public string $isoResponseCodeValue;
+
     public string $responseCode;
     public string $responseMessage;
     public string $transactionIdentifier;
@@ -50,7 +69,12 @@ class SpiResponse
     public ?Money $totalAmount;
 
     public bool $approved;
-    public bool $requiresThreeDsChallenge;
+
+    /**
+     * True when the gateway returned RedirectData (IsoResponseCode SP4 or HP0)
+     * that must be rendered in an iframe before the flow can continue.
+     */
+    public bool $requiresRedirect;
 
     /** @var array<string, mixed> */
     private array $rawData = [];
@@ -78,17 +102,23 @@ class SpiResponse
         $this->responseMessage       = (string) ($data['ResponseMessage'] ?? '');
         $this->transactionIdentifier = (string) ($data['TransactionIdentifier'] ?? '');
         $this->orderIdentifier       = isset($data['OrderIdentifier']) ? (string) $data['OrderIdentifier'] : null;
-        $this->referenceNumber       = isset($data['ReferenceNumber']) ? (string) $data['ReferenceNumber'] : null;
+        // The gateway calls this RRN (Retrieval Reference Number). ReferenceNumber
+        // is accepted as a fallback in case a variant response uses it.
+        $this->referenceNumber = isset($data['RRN'])
+            ? (string) $data['RRN']
+            : (isset($data['ReferenceNumber']) ? (string) $data['ReferenceNumber'] : null);
         $this->authorizationCode     = isset($data['AuthorizationCode']) ? (string) $data['AuthorizationCode'] : null;
         $this->panToken              = isset($data['PanToken']) && $data['PanToken'] !== '' ? (string) $data['PanToken'] : null;
         $this->spiToken              = isset($data['SpiToken']) && $data['SpiToken'] !== '' ? (string) $data['SpiToken'] : null;
         $this->cardBrand             = isset($data['CardBrand']) ? (string) $data['CardBrand'] : null;
 
-        $isoCode               = IsoResponseCode::tryFrom((string) ($data['IsoResponseCode'] ?? ''));
-        $this->isoResponseCode = $isoCode ?? IsoResponseCode::DO_NOT_HONOUR;
+        $this->isoResponseCodeValue = (string) ($data['IsoResponseCode'] ?? '');
+        $this->isoResponseCode      = IsoResponseCode::tryFrom($this->isoResponseCodeValue);
 
-        $this->approved                 = $this->isoResponseCode->isApproved();
-        $this->requiresThreeDsChallenge = $this->isoResponseCode->requires3dsChallenge();
+        // Both fail closed on an unknown code: never report an unrecognised
+        // response as approved, and never render an absent redirect.
+        $this->approved         = $this->isoResponseCode?->isApproved() ?? false;
+        $this->requiresRedirect = $this->isoResponseCode?->requiresRedirect() ?? false;
 
         $txType                = isset($data['TransactionType']) ? TransactionType::tryFrom((int) $data['TransactionType']) : null;
         $this->transactionType = $txType;
@@ -131,5 +161,23 @@ class SpiResponse
     public function getRaw(string $key, mixed $default = null): mixed
     {
         return $this->rawData[$key] ?? $default;
+    }
+
+    /**
+     * The complete decoded response exactly as the gateway sent it — no renamed
+     * keys, no type coercion, no computed fields.
+     *
+     * Every typed property on this class is a projection of this array: some keys
+     * are renamed (RRN becomes {@see $referenceNumber}), some values are converted
+     * ({@see $totalAmount} becomes a Money, amounts normalise to 2dp), and some
+     * properties are derived rather than sent at all ({@see $approved},
+     * {@see $requiresRedirect}). Use this when you need the gateway's own words —
+     * for audit logs, support tickets, or debugging a field the SDK hasn't modelled.
+     *
+     * @return array<string, mixed>
+     */
+    public function raw(): array
+    {
+        return $this->rawData;
     }
 }

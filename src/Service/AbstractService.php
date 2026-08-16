@@ -44,7 +44,7 @@ abstract class AbstractService
 
         $this->config->logger->debug('PowerTranz request', [
             'endpoint' => $endpoint,
-            'body'     => $this->redactPayload(json_decode($payload, true, 512, JSON_THROW_ON_ERROR)),
+            'body'     => $this->redactBody(json_decode($payload, true, 512, JSON_THROW_ON_ERROR)),
         ]);
 
         $response = $this->httpClient->post(
@@ -92,6 +92,22 @@ abstract class AbstractService
         }
 
         return json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * Mask a decoded request body for safe logging.
+     *
+     * Most endpoints send an object, but /spi/payment sends the bare SpiToken as
+     * a JSON string. That token authorises a financial transaction for the next
+     * five minutes, so it is masked entirely rather than written to the log.
+     */
+    private function redactBody(mixed $decoded): mixed
+    {
+        if (is_array($decoded)) {
+            return $this->redactPayload($decoded);
+        }
+
+        return is_string($decoded) ? '***' : $decoded;
     }
 
     /**

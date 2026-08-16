@@ -17,24 +17,32 @@ use Symfony\Component\Validator\Constraints as Assert;
  * All fields are validated on construction via Symfony Validator constraints
  * declared as PHP 8 attributes.  A {@see \PowerTranz\Exception\ValidationException}
  * is thrown immediately if any constraint is violated — before any HTTP call is made.
+ *
+ * The digit patterns anchor with {@code \A} and {@code \z}, never {@code ^} and
+ * {@code $}: in PCRE, {@code $} also matches immediately before a trailing
+ * newline, so {@code /^\d{3,4}$/} accepts {@code "123\n"}. Card fields arrive
+ * straight from posted form data, where a stray newline is ordinary. Letting one
+ * through would send a malformed PAN to the gateway and, worse, feed a value one
+ * byte longer than it looks to {@see maskedPan()} and the SDK's log redaction,
+ * both of which slice the PAN by offset.
  */
 final class CardSource implements JsonSerializable
 {
     public function __construct(
         #[Assert\Regex(
-            pattern: '/^\d{12,19}$/',
+            pattern: '/\A\d{12,19}\z/',
             message: 'CardPan must be 12–19 digits.',
         )]
         public readonly string $cardPan,
 
         #[Assert\Regex(
-            pattern: '/^\d{4}$/',
+            pattern: '/\A\d{4}\z/',
             message: 'CardExpiration must be in YYMM format (e.g. 2512 for December 2025).',
         )]
         public readonly string $cardExpiration,
 
         #[Assert\Regex(
-            pattern: '/^\d{3,4}$/',
+            pattern: '/\A\d{3,4}\z/',
             message: 'CardCvv must be 3 or 4 digits.',
         )]
         public readonly string $cardCvv,

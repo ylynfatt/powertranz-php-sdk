@@ -5,110 +5,152 @@ declare(strict_types=1);
 namespace PowerTranz\Service;
 
 use Brick\Money\Money;
-use PowerTranz\Config\Configuration;
-use PowerTranz\Enum\CurrencyCode;
-use PowerTranz\Exception\ValidationException;
-use PowerTranz\Validator\Constraint\PositiveMoney;
-use PowerTranz\Validator\RequestValidator;
-use Symfony\Component\Validator\Constraints as Assert;
+use PowerTranz\Model\Request\AuthRequest;
+use PowerTranz\Model\Request\Parts\Address;
+use PowerTranz\Model\Request\Parts\ExtendedData;
+use PowerTranz\Model\Request\Parts\HostedPage;
+use PowerTranz\Model\Request\Parts\ThreeDSecure;
+use PowerTranz\Model\Request\SaleRequest;
+use PowerTranz\Model\Response\AuthResponse;
+use PowerTranz\Model\Response\SaleResponse;
+use PowerTranz\Model\Response\ThreeDSecureChallenge;
 
 /**
- * Service for PowerTranz Hosted Payment Page (HPP) integration.
+ * Hosted Payment Page (HPP) transactions.
  *
- * HPP offloads card data entry to a PowerTranz-hosted page, removing
- * your checkout from PCI DSS scope for card data handling.
+ * HPP keeps card entry off your servers: the cardholder types their card into a
+ * PowerTranz-hosted form, which reduces your PCI DSS scope for card data.
  *
- * Basic flow:
- *   1. Call {@see buildRedirectUrl()} to get the HPP URL.
- *   2. Redirect the customer to that URL.
- *   3. PowerTranz processes the payment and redirects the customer
- *      back to your $returnUrl with the transaction result.
+ * ## There is no separate HPP endpoint
+ *
+ * An HPP transaction is an ordinary /spi/sale or /spi/auth carrying
+ * {@code ExtendedData.HostedPage} and **no Source**. The gateway responds with
+ * IsoResponseCode SP4 and RedirectData containing the payment form, which you
+ * render in an iframe exactly as with a 3DS challenge.
+ *
+ * This service exists to make that shape correct by construction — it builds the
+ * request so a Source can never be sent alongside hosted-page parameters, and so
+ * the required MerchantResponseUrl is never forgotten.
+ *
+ * ## Flow
+ *
+ *   1. Call {@see sale()} or {@see authorize()}.
+ *   2. Render the returned {@see ThreeDSecureChallenge::iframe()} in your page.
+ *   3. The cardholder enters their card and completes any 3DS challenge.
+ *   4. PowerTranz POSTs the result to your MerchantResponseUrl.
+ *   5. Complete the payment with {@see SpiService::payment()} and the SpiToken.
+ *
+ * @see https://developer.powertranz.com/docs/spi-3ds-hpp-1
  */
 final class HostedPageService
 {
-    public function __construct(private readonly Configuration $config)
+    public function __construct(private readonly SpiService $spi)
     {
     }
 
     /**
-     * Build the redirect URL for a Hosted Payment Page session.
+     * Start a hosted-page sale (authorise and capture in one step).
      *
-     * The {@see $totalAmount} is a {@see Money} object — the currency code
-     * is derived from it automatically, so no separate currency parameter
-     * is needed.
+     * Returns a {@see ThreeDSecureChallenge} in the normal case — the hosted page
+     * itself arrives as RedirectData, so a redirect is always expected. A direct
+     * {@see SaleResponse} means the gateway rejected the request before
+     * preprocessing; check {@see SaleResponse::$responseMessage}.
      *
-     * @param  string                $orderIdentifier  Your unique order reference.
-     * @param  Money                 $totalAmount       Amount and currency to charge.
-     * @param  string                $returnUrl         URL to redirect the customer to after payment.
-     * @param  string|null           $pageSetName       HPP page set name configured in the merchant portal.
-     * @param  string|null           $pageName          HPP page name within the page set.
-     * @param  array<string, string> $extra             Additional query parameters.
-     *
-     * @throws ValidationException when any parameter fails validation.
+     * @param  string $merchantResponseUrl Where PowerTranz posts the result and
+     *                                     returns the cardholder. Must be
+     *                                     reachable by PowerTranz.
+     * @throws \PowerTranz\Exception\ValidationException
+     * @throws \PowerTranz\Exception\ApiException
+     * @throws \PowerTranz\Exception\NetworkException
      */
-    public function buildRedirectUrl(
-        string $orderIdentifier,
+    public function sale(
         Money $totalAmount,
-        string $returnUrl,
-        ?string $pageSetName = null,
-        ?string $pageName = null,
-        array $extra = [],
-    ): string {
-        // Validate individual method parameters using Symfony constraints.
-        RequestValidator::validateValue(
-            $orderIdentifier,
-            new Assert\NotBlank(normalizer: 'trim', message: 'OrderIdentifier must not be empty.'),
-            'orderIdentifier',
-            'HPP parameter validation failed.',
-        );
-
-        RequestValidator::validateValue(
-            $totalAmount,
-            new PositiveMoney(message: 'TotalAmount must be greater than zero.'),
-            'totalAmount',
-            'HPP parameter validation failed.',
-        );
-
-        RequestValidator::validateValue(
-            $returnUrl,
-            [new Assert\NotBlank(), new Assert\Url(message: 'ReturnUrl must be a valid URL.')],
-            'returnUrl',
-            'HPP parameter validation failed.',
-        );
-
-        $alpha       = $totalAmount->getCurrency()->getCurrencyCode();
-        $currencyNum = $this->resolveCurrencyNumeric($alpha);
-        $amountStr   = (string) $totalAmount->getAmount();
-
-        $baseUrl = $this->config->environment->isSandbox()
-            ? 'https://staging.ptranz.com/hpp/'
-            : 'https://hpp.ptranz.com/hpp/';
-
-        $params = array_merge([
-            'PowerTranzId'    => $this->config->powerTranzId,
-            'OrderIdentifier' => $orderIdentifier,
-            'TotalAmount'     => $amountStr,
-            'CurrencyCode'    => $currencyNum,
-            'ReturnUrl'       => $returnUrl,
-        ], $extra);
-
-        if ($pageSetName !== null) {
-            $params['PageSetName'] = $pageSetName;
-        }
-
-        if ($pageName !== null) {
-            $params['PageName'] = $pageName;
-        }
-
-        return $baseUrl . '?' . http_build_query($params);
+        string $orderIdentifier,
+        HostedPage $page,
+        string $merchantResponseUrl,
+        bool $threeDSecure = true,
+        ?ThreeDSecure $threeDSecureParameters = null,
+        ?Address $billingAddress = null,
+        ?string $transactionIdentifier = null,
+    ): SaleResponse|ThreeDSecureChallenge {
+        return $this->spi->sale(new SaleRequest(
+            totalAmount:           $totalAmount,
+            orderIdentifier:       $orderIdentifier,
+            transactionIdentifier: $transactionIdentifier,
+            threeDSecure:          $threeDSecure,
+            extendedData:          $this->buildExtendedData(
+                $merchantResponseUrl,
+                $page,
+                $threeDSecure,
+                $threeDSecureParameters,
+            ),
+            billingAddress:        $billingAddress,
+        ));
     }
 
-    private function resolveCurrencyNumeric(string $alpha): string
-    {
-        try {
-            return CurrencyCode::fromAlphaCode($alpha)->numericString();
-        } catch (\ValueError) {
-            return $alpha;
+    /**
+     * Start a hosted-page authorisation, to be captured later with
+     * {@see TransactionService::capture()}.
+     *
+     * @throws \PowerTranz\Exception\ValidationException
+     * @throws \PowerTranz\Exception\ApiException
+     * @throws \PowerTranz\Exception\NetworkException
+     */
+    public function authorize(
+        Money $totalAmount,
+        string $orderIdentifier,
+        HostedPage $page,
+        string $merchantResponseUrl,
+        bool $threeDSecure = true,
+        ?ThreeDSecure $threeDSecureParameters = null,
+        ?Address $billingAddress = null,
+        ?string $transactionIdentifier = null,
+    ): AuthResponse|ThreeDSecureChallenge {
+        return $this->spi->authorize(new AuthRequest(
+            totalAmount:           $totalAmount,
+            orderIdentifier:       $orderIdentifier,
+            transactionIdentifier: $transactionIdentifier,
+            threeDSecure:          $threeDSecure,
+            extendedData:          $this->buildExtendedData(
+                $merchantResponseUrl,
+                $page,
+                $threeDSecure,
+                $threeDSecureParameters,
+            ),
+            billingAddress:        $billingAddress,
+        ));
+    }
+
+    /**
+     * Build the ExtendedData for a hosted page, keeping it consistent with the
+     * top-level 3DS flag.
+     *
+     * A hosted page always needs the MerchantResponseUrl, with or without 3DS.
+     * What must not happen is 3DS parameters travelling alongside a false flag:
+     * the gateway accepts that combination and quietly skips authentication.
+     * With 3DS off the parameters are therefore omitted — except when the caller
+     * passed some explicitly, which is a contradiction worth surfacing rather
+     * than silently resolving, so they are passed through for
+     * {@see \PowerTranz\Model\Request\SpiRequest} to reject.
+     */
+    private function buildExtendedData(
+        string $merchantResponseUrl,
+        HostedPage $page,
+        bool $threeDSecure,
+        ?ThreeDSecure $threeDSecureParameters,
+    ): ExtendedData {
+        if ($threeDSecure) {
+            return ExtendedData::forHostedPage(
+                merchantResponseUrl: $merchantResponseUrl,
+                hostedPage:          $page,
+                threeDSecure:        $threeDSecureParameters,
+            );
         }
+
+        return new ExtendedData(
+            merchantResponseUrl: $merchantResponseUrl,
+            threeDSecure:        $threeDSecureParameters,
+            hostedPage:          $page,
+        );
     }
 }

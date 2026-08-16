@@ -5,7 +5,7 @@
     "ResponseCode": "D0005",
     "ResponseMessage": "Do not honour",
     "AuthorizationCode": null,
-    "ReferenceNumber": "REF003",
+    "RRN": "REF003",
     "CardBrand": "VISA",
     "TotalAmount": 49.99,
     "CurrencyCode": "840",

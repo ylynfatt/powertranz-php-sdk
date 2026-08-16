@@ -17,7 +17,19 @@ use Symfony\Component\Validator\Constraints as Assert;
  * SpiTokens are valid for 5 minutes. Use {@see \PowerTranz\Exception\TokenExpiredException}
  * to detect expiry errors returned by the gateway.
  *
+ * ## Wire format
+ *
+ * This endpoint is unlike every other one in the API: the request body is the
+ * bare token as a JSON string, not an object wrapping it.
+ *
+ *     "SPI_TOKEN"
+ *
+ * Hence {@see jsonSerialize()} returns a string rather than an array, and
+ * {@code json_encode()} produces the quoted scalar the gateway expects.
+ *
  * Corresponds to POST /spi/payment.
+ *
+ * @see https://developer.powertranz.com/docs/spi-3ds-1
  */
 final class PaymentRequest implements JsonSerializable
 {
@@ -28,8 +40,11 @@ final class PaymentRequest implements JsonSerializable
         RequestValidator::validate($this, 'SpiToken is required to complete a 3DS payment.');
     }
 
-    public function jsonSerialize(): mixed
+    /**
+     * The bare token — encoded as a quoted JSON string, not an object.
+     */
+    public function jsonSerialize(): string
     {
-        return ['SpiToken' => $this->spiToken];
+        return $this->spiToken;
     }
 }

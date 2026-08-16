@@ -5,7 +5,7 @@
     "ResponseCode": "A0000",
     "ResponseMessage": "Approved",
     "AuthorizationCode": "TOKEN789",
-    "ReferenceNumber": "REF005",
+    "RRN": "REF005",
     "CardBrand": "VISA",
     "TotalAmount": 15.00,
     "CurrencyCode": "840",

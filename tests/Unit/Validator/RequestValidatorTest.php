@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use PowerTranz\Exception\ValidationException;
 use PowerTranz\Model\Request\CaptureRequest;
 use PowerTranz\Model\Request\Parts\CardSource;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\TokenSource;
 use PowerTranz\Model\Request\PaymentRequest;
 use PowerTranz\Model\Request\SaleRequest;
@@ -92,14 +93,46 @@ final class RequestValidatorTest extends TestCase
     // TokenSource
     // -----------------------------------------------------------------------
 
-    public function testTokenSourceEmptyPanTokenThrowsValidationException(): void
+    public function testTokenSourceEmptyTokenThrowsValidationException(): void
     {
         try {
             new TokenSource('');
             self::fail('Expected ValidationException was not thrown.');
         } catch (ValidationException $e) {
-            self::assertArrayHasKey('panToken', $e->getErrors());
+            self::assertArrayHasKey('token', $e->getErrors());
         }
+    }
+
+    /**
+     * The gateway returns the token as PanToken but expects it back as
+     * Source.Token — sending PanToken means it sees no card data at all.
+     */
+    public function testTokenSourceSerializesToTokenNotPanToken(): void
+    {
+        $source = new TokenSource('tok_abc123');
+
+        self::assertSame(['Token' => 'tok_abc123'], $source->jsonSerialize());
+    }
+
+    public function testFacTokenCarriesPg2TokenType(): void
+    {
+        $source = TokenSource::fac('tok_abc123', '123');
+
+        self::assertSame(
+            [
+                'Token'     => 'tok_abc123',
+                'TokenType' => 'PG2',
+                'CardCvv'   => '123',
+            ],
+            $source->jsonSerialize(),
+        );
+    }
+
+    public function testUnknownTokenTypeIsRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new TokenSource('tok_abc123', tokenType: 'PG9');
     }
 
     public function testTokenSourceInvalidCvvThrowsValidationException(): void
@@ -116,6 +149,20 @@ final class RequestValidatorTest extends TestCase
     {
         $source = new TokenSource('valid-pan-token', null);
         self::assertNull($source->cardCvv);
+    }
+
+    /**
+     * The CVV pattern anchors with \z: `$` would also match immediately before a
+     * trailing newline and let "123\n" through from posted form data.
+     */
+    public function testTokenSourceCvvWithTrailingNewlineIsRejected(): void
+    {
+        try {
+            new TokenSource('valid-pan-token', "123\n");
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('cardCvv', $e->getErrors());
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -164,6 +211,98 @@ final class RequestValidatorTest extends TestCase
             self::assertArrayHasKey('transactionIdentifier', $e->getErrors());
             self::assertStringContainsString('valid UUID', $e->getErrors()['transactionIdentifier']);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // SpiRequest — the ThreeDSecure flag and ExtendedData must agree
+    // -----------------------------------------------------------------------
+
+    /**
+     * The dangerous direction: the gateway accepts 3DS parameters alongside a
+     * false flag and simply skips authentication, so nothing downstream reveals
+     * that the transaction went through without a challenge or liability shift.
+     */
+    public function testThreeDsParametersWithoutTheFlagAreRejected(): void
+    {
+        try {
+            new SaleRequest(
+                totalAmount:     Money::of('75.00', 'USD'),
+                orderIdentifier: 'order-1',
+                source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+                extendedData:    ExtendedData::forThreeDSecure('https://merchant.example.com/callback'),
+            );
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('threeDSecure', $e->getErrors());
+            self::assertStringContainsString('without authentication', $e->getErrors()['threeDSecure']);
+        }
+    }
+
+    public function testThreeDsFlagWithoutExtendedDataIsRejected(): void
+    {
+        try {
+            new SaleRequest(
+                totalAmount:     Money::of('75.00', 'USD'),
+                orderIdentifier: 'order-1',
+                source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+                threeDSecure:    true,
+            );
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('extendedData', $e->getErrors());
+            self::assertStringContainsString('MerchantResponseUrl', $e->getErrors()['extendedData']);
+        }
+    }
+
+    public function testThreeDsFlagWithoutParametersIsRejected(): void
+    {
+        try {
+            new SaleRequest(
+                totalAmount:     Money::of('75.00', 'USD'),
+                orderIdentifier: 'order-1',
+                source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+                threeDSecure:    true,
+                extendedData:    new ExtendedData('https://merchant.example.com/callback'),
+            );
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('extendedData.threeDSecure', $e->getErrors());
+        }
+    }
+
+    /**
+     * ExtendedData on its own is fine — a MerchantResponseUrl without 3DS
+     * parameters is what a non-3DS hosted page sends.
+     */
+    public function testExtendedDataWithoutThreeDsParametersNeedsNoFlag(): void
+    {
+        $request = new SaleRequest(
+            totalAmount:     Money::of('75.00', 'USD'),
+            orderIdentifier: 'order-1',
+            source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+            extendedData:    new ExtendedData('https://merchant.example.com/callback'),
+        );
+
+        $body = $request->jsonSerialize();
+
+        self::assertFalse($body['ThreeDSecure']);
+        self::assertArrayNotHasKey('ThreeDSecure', $body['ExtendedData']);
+    }
+
+    public function testThreeDsFlagAndParametersTogetherAreAccepted(): void
+    {
+        $request = new SaleRequest(
+            totalAmount:     Money::of('75.00', 'USD'),
+            orderIdentifier: 'order-1',
+            source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+            threeDSecure:    true,
+            extendedData:    ExtendedData::forThreeDSecure('https://merchant.example.com/callback'),
+        );
+
+        $body = $request->jsonSerialize();
+
+        self::assertTrue($body['ThreeDSecure']);
+        self::assertArrayHasKey('ThreeDSecure', $body['ExtendedData']);
     }
 
     // -----------------------------------------------------------------------

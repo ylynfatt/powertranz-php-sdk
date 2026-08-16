@@ -9,12 +9,13 @@ use JsonSerializable;
 use PowerTranz\Enum\CurrencyCode;
 use PowerTranz\Model\Request\Parts\Address;
 use PowerTranz\Model\Request\Parts\CardSource;
-use PowerTranz\Model\Request\Parts\ThreeDSecure;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\TokenSource;
 use PowerTranz\Validator\Constraint\PositiveMoney;
 use PowerTranz\Validator\RequestValidator;
 use Ramsey\Uuid\Uuid;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 /**
  * Abstract base for all SPI transaction requests (Auth, Sale, RiskMgmt).
@@ -55,19 +56,119 @@ abstract class SpiRequest implements JsonSerializable
         )]
         public readonly string $orderIdentifier,
 
-        public readonly CardSource|TokenSource $source,
+        /**
+         * Card or token data. Omitted for hosted-page transactions, where the
+         * cardholder types their card into the gateway-hosted iframe instead —
+         * see {@see ExtendedData::$hostedPage}.
+         */
+        #[Assert\Valid]
+        public readonly CardSource|TokenSource|null $source = null,
 
         ?string $transactionIdentifier = null,
 
-        public readonly bool $tokenize = false,
-        public readonly ?ThreeDSecure $threeDSecure = null,
+        /**
+         * Top-level {@code ThreeDSecure} flag — a plain boolean switching 3DS on
+         * for this transaction. The parameters live in
+         * {@see ExtendedData::$threeDSecure}.
+         *
+         * Defaults to false so a non-3DS transaction needs nothing further; set
+         * it true and supply {@see $extendedData} to authenticate.
+         */
+        public readonly bool $threeDSecure = false,
+
+        #[Assert\Valid]
+        public readonly ?ExtendedData $extendedData = null,
+
+        #[Assert\Valid]
         public readonly ?Address $billingAddress = null,
+        #[Assert\Valid]
         public readonly ?Address $shippingAddress = null,
-        public readonly ?string $extendedData = null,
+
+        public readonly ?bool $addressMatch = null,
     ) {
         $this->transactionIdentifier = $this->resolveTransactionIdentifier($transactionIdentifier);
 
         RequestValidator::validate($this, 'SPI request validation failed.');
+    }
+
+    /**
+     * Cross-field constraint: the gateway needs card data from exactly one place.
+     *
+     * Either the request carries a Source, or it carries hosted-page parameters
+     * and the cardholder enters the card in the gateway's iframe. Sending both is
+     * contradictory, and sending neither leaves nothing to charge.
+     */
+    #[Assert\Callback]
+    public function validateSourceOrHostedPage(ExecutionContextInterface $context): void
+    {
+        $hasHostedPage = $this->extendedData?->hostedPage !== null;
+
+        if ($this->source === null && !$hasHostedPage) {
+            $context
+                ->buildViolation('Either a Source or ExtendedData.HostedPage is required.')
+                ->atPath('source')
+                ->addViolation();
+        }
+
+        if ($this->source !== null && $hasHostedPage) {
+            $context
+                ->buildViolation('A Source must not be sent with ExtendedData.HostedPage — the cardholder enters card data on the hosted page.')
+                ->atPath('source')
+                ->addViolation();
+        }
+    }
+
+    /**
+     * Cross-field constraint: the {@see $threeDSecure} flag and the parameters in
+     * {@see ExtendedData} must agree, in both directions.
+     *
+     * Flag on, parameters missing: without ExtendedData there is no
+     * MerchantResponseUrl, and without that PowerTranz has nowhere to post the
+     * authentication result — the cardholder completes the challenge in the
+     * iframe and control never returns. The gateway rejects such requests, so
+     * catching it locally turns an opaque remote failure into a named field
+     * error.
+     *
+     * Parameters supplied, flag off: this one the gateway happily accepts, which
+     * is what makes it dangerous. The flag is what switches authentication on;
+     * ExtendedData.ThreeDSecure alone is inert. The transaction processes as
+     * plain e-commerce — no challenge, no liability shift — while the caller,
+     * having configured 3DS, believes it ran. Nothing downstream reveals the
+     * difference, so it is rejected here.
+     */
+    #[Assert\Callback]
+    public function validateThreeDSecureParameters(ExecutionContextInterface $context): void
+    {
+        if (!$this->threeDSecure) {
+            if ($this->extendedData?->threeDSecure !== null) {
+                $context
+                    ->buildViolation(
+                        'ExtendedData.ThreeDSecure parameters were supplied but the ThreeDSecure flag is false, '
+                        . 'so the transaction would be sent without authentication. Set threeDSecure: true, or '
+                        . 'omit the parameters.',
+                    )
+                    ->atPath('threeDSecure')
+                    ->addViolation();
+            }
+
+            return;
+        }
+
+        if ($this->extendedData === null) {
+            $context
+                ->buildViolation('ExtendedData with a MerchantResponseUrl is required when ThreeDSecure is enabled.')
+                ->atPath('extendedData')
+                ->addViolation();
+
+            return;
+        }
+
+        if ($this->extendedData->threeDSecure === null) {
+            $context
+                ->buildViolation('ExtendedData.ThreeDSecure parameters are required when ThreeDSecure is enabled.')
+                ->atPath('extendedData.threeDSecure')
+                ->addViolation();
+        }
     }
 
     /**
@@ -107,16 +208,15 @@ abstract class SpiRequest implements JsonSerializable
     public function jsonSerialize(): mixed
     {
         $data = [
+            'TransactionIdentifier' => $this->transactionIdentifier,
             'TotalAmount'           => (float) (string) $this->totalAmount->getAmount(),
             'CurrencyCode'          => $this->currencyNumericString(),
+            'ThreeDSecure'          => $this->threeDSecure,
             'OrderIdentifier'       => $this->orderIdentifier,
-            'TransactionIdentifier' => $this->transactionIdentifier,
-            'Source'                => $this->source->jsonSerialize(),
-            'Tokenize'              => $this->tokenize,
         ];
 
-        if ($this->threeDSecure !== null) {
-            $data['ThreeDSecure'] = $this->threeDSecure->jsonSerialize();
+        if ($this->source !== null) {
+            $data['Source'] = $this->source->jsonSerialize();
         }
 
         if ($this->billingAddress !== null) {
@@ -127,8 +227,12 @@ abstract class SpiRequest implements JsonSerializable
             $data['ShippingAddress'] = $this->shippingAddress->jsonSerialize();
         }
 
+        if ($this->addressMatch !== null) {
+            $data['AddressMatch'] = $this->addressMatch;
+        }
+
         if ($this->extendedData !== null) {
-            $data['ExtendedData'] = $this->extendedData;
+            $data['ExtendedData'] = $this->extendedData->jsonSerialize();
         }
 
         return $data;

@@ -5,7 +5,7 @@
     "ResponseCode": "A0000",
     "ResponseMessage": "Approved",
     "AuthorizationCode": "3DS456",
-    "ReferenceNumber": "REF004",
+    "RRN": "REF004",
     "CardBrand": "VISA",
     "TotalAmount": 75.00,
     "CurrencyCode": "840",

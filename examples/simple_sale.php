@@ -48,5 +48,5 @@ if ($result->approved) {
     echo "  Reference:   {$result->referenceNumber}\n";
     echo "  Amount:      {$result->totalAmount}\n";
 } else {
-    echo "✗ Sale declined: {$result->responseMessage} ({$result->isoResponseCode->value})\n";
+    echo "✗ Sale declined: {$result->responseMessage} ({$result->isoResponseCodeValue})\n";
 }

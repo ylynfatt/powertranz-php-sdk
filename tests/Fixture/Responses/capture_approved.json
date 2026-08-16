@@ -5,7 +5,7 @@
     "ResponseCode": "A0000",
     "ResponseMessage": "Approved",
     "AuthorizationCode": "CAP123",
-    "ReferenceNumber": "REF006",
+    "RRN": "REF006",
     "TotalAmount": 29.99,
     "CurrencyCode": "840",
     "TransactionType": 3,

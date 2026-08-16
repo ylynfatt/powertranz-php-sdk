@@ -50,7 +50,7 @@ use Psr\Log\LoggerInterface;
  *
  *   $client->spi->sale($saleRequest);
  *   $client->transactions->capture($captureRequest);
- *   $client->hostedPage->buildRedirectUrl(...);
+ *   $client->hostedPage->sale(...);
  */
 final class PowerTranzClient
 {
@@ -103,7 +103,7 @@ final class PowerTranzClient
 
         $this->spi          = new SpiService($httpClient, $config);
         $this->transactions = new TransactionService($httpClient, $config);
-        $this->hostedPage   = new HostedPageService($config);
+        $this->hostedPage   = new HostedPageService($this->spi);
     }
 
     /**

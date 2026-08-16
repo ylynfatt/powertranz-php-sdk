@@ -1,0 +1,25 @@
+{
+    "TransactionType": 1,
+    "Approved": false,
+    "TransactionIdentifier": "txn-3ds-001",
+    "TotalAmount": 75.00,
+    "CurrencyCode": "840",
+    "CardBrand": "Visa",
+    "IsoResponseCode": "3D0",
+    "ResponseMessage": "3DS complete",
+    "RiskManagement": {
+        "ThreeDSecure": {
+            "Eci": "05",
+            "Xid": "dd56a939-08fa-4d18-bd57-64d8094a5606",
+            "Cavv": "AJkBCQIGiIYplVGQaQaIAAAAAAA=",
+            "AuthenticationStatus": "Y",
+            "ProtocolVersion": "2.1.0",
+            "FingerprintIndicator": "U",
+            "DsTransId": "838c2d2b-4def-415a-9046-de899b25bb4f",
+            "ResponseCode": "3D0"
+        }
+    },
+    "PanToken": "1glhritqittv5cslkx5awmljha8cjrntjjnawagki4czpg9qap",
+    "OrderIdentifier": "order-3ds-123",
+    "SpiToken": "spi-token-abc123xyz"
+}

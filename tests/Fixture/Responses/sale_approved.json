@@ -5,7 +5,7 @@
     "ResponseCode": "A0000",
     "ResponseMessage": "Approved",
     "AuthorizationCode": "SALE123",
-    "ReferenceNumber": "REF002",
+    "RRN": "REF002",
     "CardBrand": "MASTERCARD",
     "TotalAmount": 99.50,
     "CurrencyCode": "840",

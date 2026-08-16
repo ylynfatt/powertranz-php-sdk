@@ -5,67 +5,98 @@ declare(strict_types=1);
 namespace PowerTranz\Model\Request\Parts;
 
 use JsonSerializable;
+use PowerTranz\Validator\RequestValidator;
+use Symfony\Component\Validator\Constraints as Assert;
 
 /**
- * 3DS configuration embedded in an SPI authorise or sale request.
+ * 3DS2 parameters, sent as {@code ExtendedData.ThreeDSecure}.
  *
- * When enabled, the gateway will attempt 3DS authentication. If the issuer
- * requires a cardholder challenge, the response IsoResponseCode will be '3D0'
- * and the response will contain a {@see \PowerTranz\Model\Response\ThreeDSecureChallenge}.
+ * Note that this is *not* the top-level {@code ThreeDSecure} field — that one is
+ * a plain boolean flag switching 3DS on for the transaction. This object carries
+ * the parameters, and the gateway requires it whenever that flag is true.
+ *
+ * @see https://developer.powertranz.com/reference/post_spi-sale
  */
 final class ThreeDSecure implements JsonSerializable
 {
     /**
-     * Challenge window sizes supported by 3DS 2.x.
-     * Value is sent as-is in the ChallengeWindowSize field.
+     * Challenge window sizes. Sent as an integer, not a zero-padded string.
      */
-    public const WINDOW_250x400  = '01';
-    public const WINDOW_390x400  = '02';
-    public const WINDOW_500x600  = '03';
-    public const WINDOW_600x400  = '04';
-    public const WINDOW_FULLPAGE = '05';
+    public const WINDOW_250x400  = 1;
+    public const WINDOW_390x400  = 2;
+    public const WINDOW_500x600  = 3;
+    public const WINDOW_600x400  = 4;
+    public const WINDOW_FULLPAGE = 5;
+
+    /** Requestor challenge indicators. */
+    public const CHALLENGE_NO_PREFERENCE = '01';
+    public const CHALLENGE_NONE          = '02';
+    public const CHALLENGE_PREFERRED     = '03';
+    public const CHALLENGE_MANDATED      = '04';
+
+    /** Authentication indicators (threeDSRequestorAuthenticationInd). */
+    public const AUTH_PAYMENT       = '01';
+    public const AUTH_ADD_CARD      = '04';
+    public const AUTH_MAINTAIN_CARD = '05';
+
+    /** Message categories. */
+    public const CATEGORY_PA  = '01';
+    public const CATEGORY_NPA = '02';
 
     public function __construct(
-        public readonly bool $enabled = true,
-        public readonly ?BrowserDetails $browserDetails = null,
-        public readonly string $challengeWindowSize = self::WINDOW_500x600,
-        public readonly ?string $merchantUrl = null,
+        #[Assert\Choice(
+            choices: [1, 2, 3, 4, 5],
+            message: 'ChallengeWindowSize must be 1 (250x400), 2 (390x400), 3 (500x600), 4 (600x400) or 5 (full page).',
+        )]
+        public readonly int $challengeWindowSize = self::WINDOW_FULLPAGE,
+
+        #[Assert\Choice(
+            choices: ['01', '02', '03', '04'],
+            message: 'ChallengeIndicator must be 01, 02, 03 or 04.',
+        )]
+        public readonly string $challengeIndicator = self::CHALLENGE_NO_PREFERENCE,
+
+        #[Assert\Choice(
+            choices: ['01', '04', '05'],
+            message: 'AuthenticationIndicator must be 01, 04 or 05.',
+        )]
+        public readonly ?string $authenticationIndicator = null,
+
+        #[Assert\Choice(
+            choices: ['01', '02'],
+            message: 'MessageCategory must be 01 or 02.',
+        )]
+        public readonly ?string $messageCategory = null,
     ) {
+        RequestValidator::validate($this, '3DS parameter validation failed.');
     }
 
     /**
-     * Convenience factory: create a disabled 3DS object (for non-3DS transactions).
+     * Convenience factory: request that the issuer not challenge the cardholder.
+     *
+     * The issuer may still mandate one — this expresses a preference only.
      */
-    public static function disabled(): self
-    {
-        return new self(enabled: false);
-    }
-
-    /**
-     * Convenience factory: 3DS enabled with browser details.
-     */
-    public static function withBrowser(BrowserDetails $browserDetails, string $challengeWindowSize = self::WINDOW_500x600): self
+    public static function withoutChallenge(int $challengeWindowSize = self::WINDOW_FULLPAGE): self
     {
         return new self(
-            enabled:             true,
-            browserDetails:      $browserDetails,
             challengeWindowSize: $challengeWindowSize,
+            challengeIndicator:  self::CHALLENGE_NONE,
         );
     }
 
     public function jsonSerialize(): mixed
     {
         $data = [
-            'Enabled'             => $this->enabled,
             'ChallengeWindowSize' => $this->challengeWindowSize,
+            'ChallengeIndicator'  => $this->challengeIndicator,
         ];
 
-        if ($this->browserDetails !== null) {
-            $data['BrowserDetails'] = $this->browserDetails->jsonSerialize();
+        if ($this->authenticationIndicator !== null) {
+            $data['AuthenticationIndicator'] = $this->authenticationIndicator;
         }
 
-        if ($this->merchantUrl !== null) {
-            $data['MerchantUrl'] = $this->merchantUrl;
+        if ($this->messageCategory !== null) {
+            $data['MessageCategory'] = $this->messageCategory;
         }
 
         return $data;

@@ -58,8 +58,8 @@ $result = $client->spi->sale(new SaleRequest(
 ));
 
 if ($result instanceof ThreeDSecureChallenge) {
-    // Cardholder must complete a 3DS challenge — see the 3-D Secure section.
-    echo $result->render();
+    // A redirect is pending — render it in an iframe. See 3-D Secure below.
+    echo $result->iframe();
     exit;
 }
 
@@ -132,10 +132,10 @@ The client exposes three services as readonly properties.
 |---|---|---|
 | `sale(SaleRequest)` | `SaleResponse\|ThreeDSecureChallenge` | Authorise and capture in one step |
 | `authorize(AuthRequest)` | `AuthResponse\|ThreeDSecureChallenge` | Reserve funds without capturing |
-| `riskManagement(RiskManagementRequest)` | `RiskManagementResponse\|ThreeDSecureChallenge` | Non-financial 3DS pre-auth and fraud check |
-| `payment(PaymentRequest)` | `PaymentResponse` | Complete a payment after a 3DS challenge |
+| `riskManagement(RiskManagementRequest)` | `RiskManagementResponse\|ThreeDSecureChallenge` | Non-financial: 3DS authentication, fraud check, tokenisation |
+| `payment(PaymentRequest)` | `PaymentResponse` | Complete the payment once authentication has finished |
 
-The union return types are deliberate: static analysis forces you to handle the 3DS branch, so a challenge can't be silently treated as an approval.
+The union return types are deliberate: static analysis forces you to handle the redirect branch, so a pending challenge can't be silently treated as an approval.
 
 ### `$client->transactions` — post-authorisation
 
@@ -147,15 +147,12 @@ The union return types are deliberate: static analysis forces you to handle the 
 
 ### `$client->hostedPage` — HPP
 
-```php
-$url = $client->hostedPage->buildRedirectUrl(
-    orderIdentifier: 'order-1234',
-    totalAmount:     Money::of('50.00', 'USD'),
-    returnUrl:       'https://example.com/payment/return',
-);
+| Method | Returns | Purpose |
+|---|---|---|
+| `sale(...)` | `SaleResponse\|ThreeDSecureChallenge` | Hosted-page sale |
+| `authorize(...)` | `AuthResponse\|ThreeDSecureChallenge` | Hosted-page authorisation |
 
-header("Location: {$url}");
-```
+See [Hosted Payment Pages](#hosted-payment-pages) for the full flow.
 
 ## Money and currency
 
@@ -175,58 +172,127 @@ On responses, `$response->totalAmount` is a `Money` — or `null` if the gateway
 
 ## 3-D Secure 2.x
 
-A `ThreeDSecureChallenge` is returned when the issuer requires cardholder authentication (ISO response code `3D0`).
+3DS is a **two-call flow**. The first call returns a `ThreeDSecureChallenge` carrying an HTML document to render in an iframe; the second completes the payment once authentication has finished.
 
-**Step 1 — initiate with browser details** (collected client-side via JavaScript):
+You need a **`merchantResponseUrl`**: a publicly reachable URL on your site. PowerTranz POSTs the authentication result there and returns the cardholder to it. It is required — without it the cardholder finishes in the iframe and control never comes back.
+
+**Step 1 — initiate.** Enable the `threeDSecure` flag and supply the parameters in `ExtendedData`:
 
 ```php
-use PowerTranz\Model\Request\Parts\{BrowserDetails, ThreeDSecure};
+use PowerTranz\Model\Request\Parts\{ExtendedData, ThreeDSecure};
 
-$sale = new SaleRequest(
+$result = $client->spi->sale(new SaleRequest(
     totalAmount:     Money::of('75.00', 'USD'),
     orderIdentifier: 'order-1234',
     source:          $cardSource,
-    threeDSecure:    ThreeDSecure::withBrowser(new BrowserDetails(
-        acceptHeader: $_SERVER['HTTP_ACCEPT'],
-        colorDepth:   '24',
-        javaEnabled:  false,
-        language:     'en-US',
-        screenHeight: 900,
-        screenWidth:  1440,
-        timeZone:     '-300',
-        userAgent:    $_SERVER['HTTP_USER_AGENT'],
-    )),
-);
-
-$result = $client->spi->sale($sale);
+    threeDSecure:    true,
+    extendedData:    ExtendedData::forThreeDSecure(
+        merchantResponseUrl: 'https://example.com/3ds/callback',
+        threeDSecure:        new ThreeDSecure(
+            challengeWindowSize: ThreeDSecure::WINDOW_FULLPAGE,
+            challengeIndicator:  ThreeDSecure::CHALLENGE_NO_PREFERENCE,
+        ),
+    ),
+));
 
 if ($result instanceof ThreeDSecureChallenge) {
     $_SESSION['spi_token'] = $result->spiToken;   // expires in 5 minutes
-    echo $result->render();                        // renders the issuer's challenge
+    echo $result->iframe();                        // renders the gateway's document
     exit;
 }
 ```
 
-**Step 2 — complete in your callback handler**, once the issuer posts back:
+`iframe()` emits the wrapper PowerTranz documents, with the payload escaped for the `srcdoc` attribute. Use `render()` if you need the raw document to wrap yourself.
+
+> **Both halves are required.** The `threeDSecure` flag is what switches authentication on; `ExtendedData.ThreeDSecure` alone is inert. The gateway accepts parameters sent with a false flag and quietly processes a plain e-commerce sale — no challenge, no liability shift — so the SDK rejects the mismatch in either direction before the request leaves.
+
+**Step 2 — complete, in your `merchantResponseUrl` handler.** Parse the POST with `ThreeDSecureResult::fromCallback()`, then complete the payment within five minutes:
 
 ```php
-$payment = $client->spi->payment(new PaymentRequest($_SESSION['spi_token']));
+use PowerTranz\Model\Response\ThreeDSecureResult;
 
-echo $payment->approved
-    ? "Approved: {$payment->transactionIdentifier}"
-    : "Failed: {$payment->responseMessage}";
+$result = ThreeDSecureResult::fromCallback($_POST);
+
+if ($result->canCompletePayment()) {
+    $payment = $client->spi->payment(new PaymentRequest($result->spiToken));
+
+    echo $payment->approved
+        ? "Approved: {$payment->transactionIdentifier}"
+        : "Failed: {$payment->responseMessage}";
+}
 ```
 
-If the issuer authenticates without a challenge (frictionless flow), step 1 returns a normal `SaleResponse` and step 2 is skipped entirely.
+The result posted to your callback is the **authentication** outcome, not a financial one — no funds move until step 2.
+
+> **The callback body is not JSON.** The integration guide shows the result as a JSON document, but it arrives `application/x-www-form-urlencoded` with three fields — `Response`, `TransactionIdentifier` and `SpiToken` — and the whole authentication document is nested inside `Response` as a JSON *string*. Reading `$_POST['IsoResponseCode']` finds nothing. `fromCallback()` unwraps it; it also accepts a JSON body or an already-decoded `Response`.
+
+`ThreeDSecureResult` exposes `spiToken`, `isoResponseCode`, `responseMessage`, `authenticationStatus`, `eci`, `cavv`, `protocolVersion`, `dsTransId`, `panToken`, `cardBrand`, `cardholderInfo`, plus `getRaw()` for anything unmodelled. The helpers are `isAuthenticated()` (`Y` or `A`), `isThreeDsUnsupported()` (`3D1`), and `canCompletePayment()`.
+
+If `cardholderInfo` is present, the issuer wants that message shown to the cardholder.
+
+### Reading the response codes
+
+`IsoResponseCode` carries two different families of code depending on the stage:
+
+| Code | Meaning | Where you see it |
+|---|---|---|
+| `SP4` | SPI preprocessing complete | Step 1 — a redirect is pending |
+| `HP0` | HPP preprocessing complete | Step 1, hosted page |
+| `3D0` | 3DS complete | POSTed to your `merchantResponseUrl` |
+| `3D1` | 3DS not supported by the card | Same; proceed as standard e-commerce |
+| `00` | Issuer approved | Step 2, after payment completion |
+
+Prefer the helpers over comparing codes by hand: `requiresRedirect()`, `isApproved()`, `isNonFinancialSuccess()`, `isDeclined()`, `isRetryable()`, `requiresCardRetention()`.
+
+All 94 documented ISO 8583 codes are modelled, alongside the nine gateway status codes above. `isoResponseCode` is **nullable** — card networks add codes, so it is null for anything unrecognised, and `isoResponseCodeValue` always holds the raw string the gateway sent. Nothing is ever substituted:
+
+```php
+if ($payment->isoResponseCode?->isRetryable()) {
+    // 91 issuer inoperative, 96 system malfunction, 98 host unreachable…
+    // Transient. Retrying is reasonable.
+}
+
+// Always safe to log, even for a code the SDK does not know:
+error_log("gateway returned {$payment->isoResponseCodeValue}");
+```
+
+`isRetryable()` matters operationally: `91` (issuer unreachable) may succeed on a retry, while `05` (do not honour) will not, and retrying it risks tripping issuer velocity rules.
+
+3DS requires `CardholderName` on the source, plus an **email address and/or phone number** on the billing address. Omitting both fails the authentication.
+
+## Hosted Payment Pages
+
+HPP keeps card entry off your servers, reducing your PCI DSS scope. There is no separate HPP endpoint — it is an ordinary `spi/sale` or `spi/auth` carrying hosted-page parameters and **no card source**. The cardholder types their card into the gateway's iframe.
+
+```php
+use PowerTranz\Model\Request\Parts\HostedPage;
+
+$result = $client->hostedPage->sale(
+    totalAmount:         Money::of('50.00', 'USD'),
+    orderIdentifier:     'order-1234',
+    page:                HostedPage::fromPortal('MyPageSet', 'MyPageName'),
+    merchantResponseUrl: 'https://example.com/payment/return',
+);
+
+if ($result instanceof ThreeDSecureChallenge) {
+    $_SESSION['spi_token'] = $result->spiToken;
+    echo $result->iframe();
+    exit;
+}
+```
+
+From there the flow is identical to 3DS: the cardholder pays in the iframe, PowerTranz posts to your `merchantResponseUrl`, and you complete with `payment()`.
+
+> Page sets created in the Merchant Portal **must** carry a `PTZ/` prefix. Without it the page silently fails to load and the transaction fails with no clear reason. `HostedPage::fromPortal()` adds it for you; use the constructor directly only if your page set genuinely has no prefix.
 
 ## Tokenisation
 
-Set `tokenize: true` on any SPI request; the resulting token comes back on the response as `$response->panToken`.
+Tokenising happens on **`riskManagement()`** — a non-financial request that moves no money. `Tokenize` is not accepted on `sale` or `authorize`.
 
 ```php
-$result = $client->spi->sale(new SaleRequest(
-    totalAmount:     Money::of('19.99', 'USD'),
-    orderIdentifier: 'order-1234',
+$result = $client->spi->riskManagement(new RiskManagementRequest(
+    totalAmount:     Money::of('1.00', 'USD'),   // nominal; nothing is charged
+    orderIdentifier: 'tokenise-1234',
     source:          $cardSource,
     tokenize:        true,
 ));
@@ -234,7 +300,9 @@ $result = $client->spi->sale(new SaleRequest(
 $token = $result->panToken;   // store this, never the PAN
 ```
 
-Charge it later with a `TokenSource`:
+`$result->approved` is `false` here — nothing was approved because nothing was charged. Check `panToken` instead, or `isoResponseCode` for `TK0`.
+
+Charge the token later with a `TokenSource`:
 
 ```php
 use PowerTranz\Model\Request\Parts\TokenSource;
@@ -242,9 +310,11 @@ use PowerTranz\Model\Request\Parts\TokenSource;
 $client->spi->sale(new SaleRequest(
     totalAmount:     Money::of('19.99', 'USD'),
     orderIdentifier: 'order-5678',
-    source:          new TokenSource(panToken: $token),
+    source:          new TokenSource($token),
 ));
 ```
+
+Note the field names differ by direction: the gateway **returns** the token as `PanToken` but **expects** it back as `Source.Token`. `TokenSource` handles that. For First Atlantic Commerce tokens use `TokenSource::fac($token)`, which tags them `PG2`.
 
 ## Error handling
 
@@ -280,9 +350,18 @@ A **declined** transaction is not an exception. Check `$response->approved` and 
 
 Every response extends `SpiResponse` and exposes:
 
-`isoResponseCode`, `responseCode`, `responseMessage`, `transactionIdentifier`, `orderIdentifier`, `referenceNumber`, `authorizationCode`, `panToken`, `spiToken`, `cardBrand`, `transactionType`, `totalAmount`, `approved`, `requiresThreeDsChallenge`
+`isoResponseCode`, `responseCode`, `responseMessage`, `transactionIdentifier`, `orderIdentifier`, `referenceNumber`, `authorizationCode`, `panToken`, `spiToken`, `cardBrand`, `transactionType`, `totalAmount`, `approved`, `requiresRedirect`
 
-Fields the SDK doesn't model yet remain reachable via `getRaw('FieldName')`, so a gateway-side addition never blocks you.
+Every one of those is a **projection** of the gateway response, not a copy of it. Some keys are renamed (`RRN` becomes `referenceNumber`), some values are converted (`totalAmount` becomes a `Money`, normalised to 2dp), and some are computed by the SDK rather than sent at all (`approved`, `requiresRedirect`, `isoResponseCode`'s enum case and `label()`).
+
+When you need the gateway's own words — audit logs, support tickets, debugging an unmodelled field — use the raw accessors, available on `SpiResponse`, `ThreeDSecureChallenge` and `ThreeDSecureResult` alike:
+
+```php
+$response->getRaw('FieldName');   // one field, untouched
+$response->raw();                 // the whole decoded payload, untouched
+```
+
+`raw()` is the safest thing to log: it never renames, coerces, or infers.
 
 ## Examples
 

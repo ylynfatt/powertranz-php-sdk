@@ -8,11 +8,12 @@ use Brick\Money\Money;
 use PHPUnit\Framework\TestCase;
 use PowerTranz\Config\Configuration;
 use PowerTranz\Enum\CurrencyCode;
+use PowerTranz\Enum\IsoResponseCode;
 use PowerTranz\Exception\AuthenticationException;
 use PowerTranz\Exception\ValidationException;
 use PowerTranz\Model\Request\AuthRequest;
-use PowerTranz\Model\Request\Parts\BrowserDetails;
 use PowerTranz\Model\Request\Parts\CardSource;
+use PowerTranz\Model\Request\Parts\ExtendedData;
 use PowerTranz\Model\Request\Parts\ThreeDSecure;
 use PowerTranz\Model\Request\PaymentRequest;
 use PowerTranz\Model\Request\SaleRequest;
@@ -21,6 +22,7 @@ use PowerTranz\Model\Response\PaymentResponse;
 use PowerTranz\Model\Response\SaleResponse;
 use PowerTranz\Model\Response\ThreeDSecureChallenge;
 use PowerTranz\Service\SpiService;
+use PowerTranz\Tests\Fixture\CollectingLogger;
 use PowerTranz\Tests\Fixture\MockHttpClient;
 use PowerTranz\Tests\Fixture\ResponseFixture;
 use Ramsey\Uuid\Uuid;
@@ -47,7 +49,11 @@ final class SpiServiceTest extends TestCase
         self::assertTrue($result->approved);
     }
 
-    public function testSaleReturnsThreeDsChallengeOnRedirectCode(): void
+    /**
+     * The first SPI call returns SP4 ("SPI Preprocessing complete") with
+     * RedirectData and an SpiToken — this is what must produce a challenge.
+     */
+    public function testSaleReturnsThreeDsChallengeOnSp4(): void
     {
         $this->httpClient->addResponse(200, ResponseFixture::load('sale_3ds_redirect'));
 
@@ -55,7 +61,24 @@ final class SpiServiceTest extends TestCase
 
         self::assertInstanceOf(ThreeDSecureChallenge::class, $result);
         self::assertSame('spi-token-abc123xyz', $result->spiToken);
-        self::assertTrue($result->isIframe());
+        self::assertStringContainsString('threeDSMethodData', $result->redirectHtml);
+    }
+
+    /**
+     * 3D0 is the authentication result delivered to the MerchantResponseUrl,
+     * not a pending redirect. Reaching it on a sale response means the flow is
+     * already past the challenge, so it must hydrate as a normal SaleResponse.
+     */
+    public function testThreeDsCompleteCodeIsNotTreatedAsAChallenge(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('threeds_authentication_result'));
+
+        $result = $this->service->sale($this->makeSaleRequest());
+
+        self::assertInstanceOf(SaleResponse::class, $result);
+        self::assertNotInstanceOf(ThreeDSecureChallenge::class, $result);
+        self::assertFalse($result->requiresRedirect);
+        self::assertSame(IsoResponseCode::THREE_DS_COMPLETE, $result->isoResponseCode);
     }
 
     public function testAuthorizeReturnsAuthResponse(): void
@@ -82,6 +105,56 @@ final class SpiServiceTest extends TestCase
 
         self::assertInstanceOf(PaymentResponse::class, $result);
         self::assertTrue($result->approved);
+    }
+
+    /**
+     * /spi/payment is the one endpoint whose body is not an object: it is the
+     * bare token as a quoted JSON string.
+     */
+    public function testPaymentBodyIsTheBareQuotedToken(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('payment_approved'));
+
+        $this->service->payment(new PaymentRequest('spi-token-abc123xyz'));
+
+        $body = $this->httpClient->getLastRequest()['body'];
+
+        self::assertSame('"spi-token-abc123xyz"', $body);
+
+        // Decodes to a string, not an array with an SpiToken key.
+        $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsString($decoded);
+        self::assertSame('spi-token-abc123xyz', $decoded);
+    }
+
+    public function testPaymentRequestSerializesToAString(): void
+    {
+        $request = new PaymentRequest('spi-token-abc123xyz');
+
+        self::assertSame('spi-token-abc123xyz', $request->jsonSerialize());
+        self::assertSame('"spi-token-abc123xyz"', json_encode($request, JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * The SpiToken can complete a payment for five minutes, so it must not be
+     * written to the debug log.
+     */
+    public function testSpiTokenIsNotWrittenToTheDebugLog(): void
+    {
+        $logger  = new CollectingLogger();
+        $service = new SpiService(
+            $this->httpClient,
+            new Configuration('test-id', 'test-pw', logger: $logger),
+        );
+
+        $this->httpClient->addResponse(200, ResponseFixture::load('payment_approved'));
+        $service->payment(new PaymentRequest('spi-token-abc123xyz'));
+
+        $logged = json_encode($logger->records, JSON_THROW_ON_ERROR);
+
+        self::assertNotFalse($logged);
+        self::assertStringNotContainsString('spi-token-abc123xyz', $logged);
+        self::assertStringContainsString('***', $logged);
     }
 
     public function testThrowsAuthenticationExceptionOn401(): void
@@ -190,35 +263,102 @@ final class SpiServiceTest extends TestCase
         }
     }
 
-    public function testSaleWithThreeDsIncludesThreeDsBlock(): void
+    /**
+     * The wire format for a 3DS sale, asserted field by field against the
+     * payload published in the SPI-3DS integration guide: ThreeDSecure is a
+     * top-level boolean, and the parameters plus the callback URL sit under
+     * ExtendedData.
+     */
+    public function testThreeDsSaleMatchesDocumentedPayload(): void
     {
-        $this->httpClient->addResponse(200, ResponseFixture::load('sale_approved'));
-
-        $browserDetails = new BrowserDetails(
-            acceptHeader:  '*/*',
-            colorDepth:    '24',
-            javaEnabled:   false,
-            language:      'en-US',
-            screenHeight:  900,
-            screenWidth:   1440,
-            timeZone:      '-300',
-            userAgent:     'Mozilla/5.0',
-        );
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_3ds_redirect'));
 
         $request = new SaleRequest(
             totalAmount:     Money::of('99.00', 'USD'),
             orderIdentifier: 'order-3ds',
             source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
-            threeDSecure:    ThreeDSecure::withBrowser($browserDetails),
+            threeDSecure:    true,
+            extendedData:    ExtendedData::forThreeDSecure(
+                merchantResponseUrl: 'https://merchant.example.com/3ds/callback',
+                threeDSecure:        new ThreeDSecure(
+                    challengeWindowSize: ThreeDSecure::WINDOW_600x400,
+                    challengeIndicator:  ThreeDSecure::CHALLENGE_NO_PREFERENCE,
+                ),
+            ),
         );
 
         $this->service->sale($request);
 
         $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
 
-        self::assertArrayHasKey('ThreeDSecure', $body);
-        self::assertTrue($body['ThreeDSecure']['Enabled']);
-        self::assertArrayHasKey('BrowserDetails', $body['ThreeDSecure']);
+        // Top-level flag is a boolean, not an object.
+        self::assertTrue($body['ThreeDSecure']);
+        self::assertIsBool($body['ThreeDSecure']);
+
+        self::assertSame(
+            [
+                'ThreeDSecure' => [
+                    'ChallengeWindowSize' => 4,
+                    'ChallengeIndicator'  => '01',
+                ],
+                'MerchantResponseUrl' => 'https://merchant.example.com/3ds/callback',
+            ],
+            $body['ExtendedData'],
+        );
+
+        // ChallengeWindowSize is an integer on the wire, never a padded string.
+        self::assertIsInt($body['ExtendedData']['ThreeDSecure']['ChallengeWindowSize']);
+    }
+
+    public function testNonThreeDsSaleSendsFalseAndOmitsExtendedData(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_approved'));
+
+        $this->service->sale($this->makeSaleRequest());
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertFalse($body['ThreeDSecure']);
+        self::assertArrayNotHasKey('ExtendedData', $body);
+    }
+
+    /**
+     * Enabling 3DS without ExtendedData means no MerchantResponseUrl, so the
+     * gateway would have nowhere to return the cardholder. Caught locally.
+     */
+    public function testThreeDsWithoutExtendedDataIsRejectedLocally(): void
+    {
+        try {
+            new SaleRequest(
+                totalAmount:     Money::of('99.00', 'USD'),
+                orderIdentifier: 'order-3ds',
+                source:          new CardSource('4111111111111111', '2512', '123', 'Jane Doe'),
+                threeDSecure:    true,
+            );
+            self::fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('extendedData', $e->getErrors());
+            self::assertStringContainsString('MerchantResponseUrl', $e->getErrors()['extendedData']);
+        }
+
+        self::assertSame(0, $this->httpClient->getRequestCount());
+    }
+
+    public function testMerchantResponseUrlMustBeAValidUrl(): void
+    {
+        try {
+            ExtendedData::forThreeDSecure('not-a-url');
+            self::fail('Expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('merchantResponseUrl', $e->getErrors());
+        }
+    }
+
+    public function testChallengeWindowSizeIsConstrainedToDocumentedRange(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new ThreeDSecure(challengeWindowSize: 6);
     }
 
     public function testValidationExceptionThrownBeforeHttpCall(): void
