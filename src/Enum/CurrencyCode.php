@@ -12,6 +12,11 @@ use Brick\Money\Money;
  * Caribbean currencies are listed first as PowerTranz is a Caribbean-focused gateway.
  * Case names match ISO 4217 alpha-3 codes exactly, so {@see isoAlpha()} can return
  * {@see CurrencyCode::name} and {@see fromAlphaCode()} can do a reverse lookup.
+ *
+ * Four cases below look like two-digit codes and are not: BBD, BSD, BZD and AUD
+ * are 052, 044, 084 and 036. The leading zero cannot be written here, since PHP
+ * reads `052` as an octal literal worth 42, so the value is stored unpadded and
+ * {@see numericString()} restores the third digit for the wire.
  */
 enum CurrencyCode: int
 {
@@ -19,9 +24,9 @@ enum CurrencyCode: int
     case XCD = 951;  // Eastern Caribbean Dollar (Antigua, Dominica, Grenada, St Kitts, St Lucia, St Vincent)
     case TTD = 780;  // Trinidad and Tobago Dollar
     case JMD = 388;  // Jamaican Dollar
-    case BBD = 52;   // Barbadian Dollar
-    case BSD = 44;   // Bahamian Dollar
-    case BZD = 84;   // Belize Dollar
+    case BBD = 52;   // Barbadian Dollar — ISO 052
+    case BSD = 44;   // Bahamian Dollar — ISO 044
+    case BZD = 84;   // Belize Dollar — ISO 084
     case GYD = 328;  // Guyanese Dollar
     case HTG = 332;  // Haitian Gourde
     case KYD = 136;  // Cayman Islands Dollar
@@ -32,7 +37,7 @@ enum CurrencyCode: int
     case EUR = 978;
     case GBP = 826;
     case CAD = 124;
-    case AUD = 36;
+    case AUD = 36;   // ISO 036
     case NZD = 554;
     case JPY = 392;
     case CHF = 756;
@@ -43,10 +48,21 @@ enum CurrencyCode: int
 
     /**
      * Returns the zero-padded three-digit numeric string required by the API.
+     *
+     * ISO 4217 numeric codes are always three digits, and several are written
+     * with a leading zero: BBD is 052, BSD 044, BZD 084, AUD 036. That zero
+     * cannot live in the case value, because `052` is an octal literal in PHP
+     * and evaluates to 42 — so the cases store 52, 44, 84 and 36, and the
+     * padding is restored here.
+     *
+     * Sending the unpadded form is rejected. The gateway answers IsoResponseCode
+     * 97 ("Format Error") with ResponseMessage "Request failed validation" and an
+     * Errors entry of code 38, "Field is invalid: CurrencyCode" — confirmed
+     * against the gateway for BBD.
      */
     public function numericString(): string
     {
-        return (string) $this->value;
+        return str_pad((string) $this->value, 3, '0', STR_PAD_LEFT);
     }
 
     /**
