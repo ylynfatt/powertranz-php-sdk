@@ -244,7 +244,7 @@ If `cardholderInfo` is present, the issuer wants that message shown to the cardh
 
 Prefer the helpers over comparing codes by hand: `requiresRedirect()`, `isApproved()`, `isNonFinancialSuccess()`, `isDeclined()`, `isRetryable()`, `requiresCardRetention()`.
 
-All 92 documented ISO 8583 codes are modelled. `isoResponseCode` is **nullable** — card networks add codes, so it is null for anything unrecognised, and `isoResponseCodeValue` always holds the raw string the gateway sent. Nothing is ever substituted:
+All 94 documented ISO 8583 codes are modelled, alongside the nine gateway status codes above. `isoResponseCode` is **nullable** — card networks add codes, so it is null for anything unrecognised, and `isoResponseCodeValue` always holds the raw string the gateway sent. Nothing is ever substituted:
 
 ```php
 if ($payment->isoResponseCode?->isRetryable()) {

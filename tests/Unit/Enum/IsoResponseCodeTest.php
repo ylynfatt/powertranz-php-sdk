@@ -9,6 +9,13 @@ use PowerTranz\Enum\IsoResponseCode;
 
 final class IsoResponseCodeTest extends TestCase
 {
+    /**
+     * Non-financial gateway status codes, as opposed to the ISO 8583 table.
+     *
+     * @var list<string>
+     */
+    private const GATEWAY_STATUS_CODES = ['SP4', 'HP0', '3D0', '3D1', 'TK0', 'FC0', '3D4', '3D5', '3D6'];
+
     public function testApprovedIsApprovedOnly(): void
     {
         $code = IsoResponseCode::APPROVED;
@@ -207,8 +214,9 @@ final class IsoResponseCodeTest extends TestCase
     }
 
     /**
-     * The published table has 92 financial codes. Guards against a partial list
-     * silently reappearing.
+     * The published table has 94 financial codes. Guards against a partial list
+     * silently reappearing, and pins the count quoted in the README — an earlier
+     * miscount there said 92.
      */
     public function testEveryDocumentedFinancialCodeIsPresent(): void
     {
@@ -227,6 +235,18 @@ final class IsoResponseCodeTest extends TestCase
         ));
 
         self::assertSame([], $missing, 'Codes missing from the enum: ' . implode(', ', $missing));
+        self::assertCount(94, $documented);
+
+        // And nothing beyond the table: the two lists must match exactly, or the
+        // count the README quotes stops being true.
+        $financial = array_diff(
+            array_map(static fn (IsoResponseCode $case): string => $case->value, IsoResponseCode::cases()),
+            self::GATEWAY_STATUS_CODES,
+        );
+
+        $unexpected = array_values(array_diff($financial, $documented));
+
+        self::assertSame([], $unexpected, 'Codes in the enum but not the table: ' . implode(', ', $unexpected));
     }
 
     public function testRetryableCodesAreTransientOnly(): void

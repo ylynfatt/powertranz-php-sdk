@@ -20,10 +20,18 @@ use PowerTranz\Model\Response\ThreeDSecureChallenge;
  *
  * Methods that initiate a charge return a union type:
  *   - The concrete response (e.g. SaleResponse) on approval/decline
- *   - A {@see ThreeDSecureChallenge} when 3DS authentication is required (IsoResponseCode 3D0)
+ *   - A {@see ThreeDSecureChallenge} when the gateway returns RedirectData to
+ *     render — IsoResponseCode SP4, or HP0 for a hosted payment page
  *
  * The union return type forces calling code to handle both branches at compile time
  * (with PHPStan/Psalm), eliminating silent 3DS bypass bugs.
+ *
+ * Note that the challenge branch is *not* signalled by 3D0. That code reports a
+ * finished 3DS authentication and arrives later, POSTed to your
+ * MerchantResponseUrl — parse it with
+ * {@see \PowerTranz\Model\Response\ThreeDSecureResult::fromCallback()}. Seeing
+ * 3D0 on one of these responses means the flow is already past the challenge, so
+ * it hydrates as an ordinary response.
  */
 final class SpiService extends AbstractService
 {
