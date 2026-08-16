@@ -38,8 +38,10 @@ final class TokenSource implements JsonSerializable
         public readonly string $token,
 
         // Regex skips null — null means "no CVV supplied", which is valid for token payments.
+        // Anchored with \z rather than $, which would also match before a trailing
+        // newline and so accept "123\n" straight out of posted form data.
         #[Assert\Regex(
-            pattern: '/^\d{3,4}$/',
+            pattern: '/\A\d{3,4}\z/',
             message: 'CardCvv must be 3 or 4 digits.',
         )]
         public readonly ?string $cardCvv = null,

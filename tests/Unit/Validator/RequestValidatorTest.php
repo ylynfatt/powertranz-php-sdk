@@ -151,6 +151,20 @@ final class RequestValidatorTest extends TestCase
         self::assertNull($source->cardCvv);
     }
 
+    /**
+     * The CVV pattern anchors with \z: `$` would also match immediately before a
+     * trailing newline and let "123\n" through from posted form data.
+     */
+    public function testTokenSourceCvvWithTrailingNewlineIsRejected(): void
+    {
+        try {
+            new TokenSource('valid-pan-token', "123\n");
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('cardCvv', $e->getErrors());
+        }
+    }
+
     // -----------------------------------------------------------------------
     // SaleRequest / SpiRequest constraints
     // -----------------------------------------------------------------------

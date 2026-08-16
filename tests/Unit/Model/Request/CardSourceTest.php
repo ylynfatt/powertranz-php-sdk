@@ -73,4 +73,46 @@ final class CardSourceTest extends TestCase
 
         self::assertSame('1234', $source->cardCvv);
     }
+
+    /**
+     * PCRE's `$` also matches immediately before a trailing newline, so the
+     * digit patterns would otherwise accept "123\n" — and card fields come
+     * straight from posted form data, where a stray newline is ordinary.
+     *
+     * @dataProvider digitFields
+     * @param  array{string, string, string, string} $arguments
+     */
+    public function testTrailingNewlineIsRejected(string $field, array $arguments): void
+    {
+        try {
+            new CardSource(...$arguments);
+            self::fail("Expected ValidationException for {$field} with a trailing newline");
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey($field, $e->getErrors());
+        }
+    }
+
+    /**
+     * @return array<string, array{string, array{string, string, string, string}}>
+     */
+    public static function digitFields(): array
+    {
+        return [
+            'cardPan'        => ['cardPan', ["4111111111111111\n", '2512', '123', 'Jane Doe']],
+            'cardExpiration' => ['cardExpiration', ['4111111111111111', "2512\n", '123', 'Jane Doe']],
+            'cardCvv'        => ['cardCvv', ['4111111111111111', '2512', "123\n", 'Jane Doe']],
+        ];
+    }
+
+    /**
+     * A PAN carrying a trailing newline is one byte longer than it looks, and
+     * both maskedPan() and the SDK's log redaction slice it by offset — so the
+     * value must never get past the constructor in the first place.
+     */
+    public function testMaskedPanIsNeverFedAnUnvalidatedLength(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new CardSource("4111111111111111\n", '2512', '123', 'Jane Doe');
+    }
 }
