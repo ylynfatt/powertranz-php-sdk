@@ -112,4 +112,66 @@ final class AddressTest extends TestCase
 
         new Address(line1: str_repeat('a', 31));
     }
+
+    /**
+     * PCRE's `$` also matches immediately before a trailing newline, so patterns
+     * anchored with it accept "Paris\n" — the shape a value takes when it comes
+     * from a pasted form field, a spreadsheet cell or a config file. Every
+     * pattern here anchors with \z instead.
+     *
+     * @dataProvider fieldsWithCharacterConstraints
+     */
+    public function testTrailingNewlineIsRejected(string $field, string $valid): void
+    {
+        try {
+            new Address(...[$field => $valid . "\n"]);
+            self::fail("Expected ValidationException for {$field} with a trailing newline");
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey($field, $e->getErrors());
+        }
+    }
+
+    /**
+     * The same values without the newline must still be accepted, so the fix is
+     * an anchoring change and not an accidental tightening.
+     *
+     * @dataProvider fieldsWithCharacterConstraints
+     */
+    public function testCleanValueIsStillAccepted(string $field, string $valid): void
+    {
+        $address = new Address(...[$field => $valid]);
+
+        self::assertSame($valid, $address->{$field});
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function fieldsWithCharacterConstraints(): array
+    {
+        return [
+            'line1'        => ['line1', 'Paris'],
+            'line2'        => ['line2', 'Apt 4'],
+            'city'         => ['city', 'Kingston'],
+            'state'        => ['state', 'JM-01'],
+            'county'       => ['county', 'St. Andrew'],
+            'firstName'    => ['firstName', 'Jane'],
+            'lastName'     => ['lastName', 'Doe'],
+            'postalCode'   => ['postalCode', 'M5V3A8'],
+            'phoneNumber'  => ['phoneNumber', '35301176543210'],
+            'phoneNumber2' => ['phoneNumber2', '18765550100'],
+            'phoneNumber3' => ['phoneNumber3', '18765550101'],
+        ];
+    }
+
+    /**
+     * A newline in the middle was already rejected; guard against a fix that
+     * only handles the trailing case.
+     */
+    public function testEmbeddedNewlineIsRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        new Address(line1: "Paris\nLondon");
+    }
 }

@@ -33,11 +33,26 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class Address implements JsonSerializable
 {
+    /**
+     * Every pattern here is anchored with {@code \A} and {@code \z} rather than
+     * {@code ^} and {@code $}. In PCRE, {@code $} also matches immediately before
+     * a trailing newline, so {@code /^[a-z]*$/} accepts {@code "paris\n"} — and a
+     * value pasted from a form, a spreadsheet cell or a config file arrives with
+     * exactly that. It would pass validation here and be rejected by the gateway,
+     * which is the failure this class exists to catch locally.
+     */
+
     /** Characters accepted in names. */
-    private const NAME_PATTERN = "/^[a-zA-Z0-9\-' ]*$/";
+    private const NAME_PATTERN = "/\A[a-zA-Z0-9\-' ]*\z/";
 
     /** Characters accepted in address lines, city, county and state. */
-    private const ADDRESS_PATTERN = "/^[a-zA-Z0-9\-' .]*$/";
+    private const ADDRESS_PATTERN = "/\A[a-zA-Z0-9\-' .]*\z/";
+
+    /** Strictly alphanumeric — no spaces, no dashes. */
+    private const POSTAL_CODE_PATTERN = '/\A[a-zA-Z0-9]*\z/';
+
+    /** Digits only, including the country code. */
+    private const PHONE_PATTERN = '/\A[0-9]+\z/';
 
     public function __construct(
         #[Assert\Regex(pattern: self::ADDRESS_PATTERN, message: 'Line1 must not contain accents or symbols.')]
@@ -58,7 +73,7 @@ final class Address implements JsonSerializable
         public readonly ?string $state = null,
 
         #[Assert\Regex(
-            pattern: '/^[a-zA-Z0-9]*$/',
+            pattern: self::POSTAL_CODE_PATTERN,
             message: 'PostalCode must be alphanumeric only — remove spaces and dashes.',
         )]
         #[Assert\Length(max: 10, maxMessage: 'PostalCode must not exceed 10 characters.')]
@@ -74,7 +89,7 @@ final class Address implements JsonSerializable
 
         /** Digits only, including country code, e.g. '35301176543210'. */
         #[Assert\Regex(
-            pattern: '/^[0-9]+$/',
+            pattern: self::PHONE_PATTERN,
             message: 'PhoneNumber must contain digits only, including the country code.',
         )]
         public readonly ?string $phoneNumber = null,
@@ -91,10 +106,10 @@ final class Address implements JsonSerializable
         #[Assert\Length(max: 25, maxMessage: 'County must not exceed 25 characters.')]
         public readonly ?string $county = null,
 
-        #[Assert\Regex(pattern: '/^[0-9]+$/', message: 'PhoneNumber2 must contain digits only.')]
+        #[Assert\Regex(pattern: self::PHONE_PATTERN, message: 'PhoneNumber2 must contain digits only.')]
         public readonly ?string $phoneNumber2 = null,
 
-        #[Assert\Regex(pattern: '/^[0-9]+$/', message: 'PhoneNumber3 must contain digits only.')]
+        #[Assert\Regex(pattern: self::PHONE_PATTERN, message: 'PhoneNumber3 must contain digits only.')]
         public readonly ?string $phoneNumber3 = null,
     ) {
         RequestValidator::validate($this, 'Address validation failed.');
