@@ -137,10 +137,39 @@ final class HostedPageServiceTest extends TestCase
      * Portal-created page sets must carry the PTZ/ prefix or the page fails to
      * load, surfacing only as a failed transaction.
      */
-    public function testFromPortalAppliesPrefixExactlyOnce(): void
+    /**
+     * @dataProvider portalPageSets
+     */
+    public function testFromPortalAppliesPrefixExactlyOnce(string $input): void
     {
-        self::assertSame('PTZ/HPPTest', HostedPage::fromPortal('HPPTest', 'P')->pageSet);
-        self::assertSame('PTZ/HPPTest', HostedPage::fromPortal('PTZ/HPPTest', 'P')->pageSet);
+        self::assertSame('PTZ/HPPTest', HostedPage::fromPortal($input, 'P')->pageSet);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function portalPageSets(): array
+    {
+        return [
+            'bare'               => ['HPPTest'],
+            'already prefixed'   => ['PTZ/HPPTest'],
+            'lowercase prefix'   => ['ptz/HPPTest'],
+            'mixed-case prefix'  => ['Ptz/HPPTest'],
+            'padded'             => ['  HPPTest  '],
+            'padded and prefixed' => ['  PTZ/HPPTest  '],
+            'padded inside'      => ['PTZ/  HPPTest'],
+        ];
+    }
+
+    /**
+     * Trimming happens in the constructor, so the direct path behaves the same.
+     */
+    public function testConstructorTrimsBothValues(): void
+    {
+        $page = new HostedPage('  PTZ/Set  ', "  Page\t");
+
+        self::assertSame('PTZ/Set', $page->pageSet);
+        self::assertSame('Page', $page->pageName);
     }
 
     public function testBlankPageSetIsRejected(): void
@@ -148,6 +177,80 @@ final class HostedPageServiceTest extends TestCase
         $this->expectException(ValidationException::class);
 
         new HostedPage('  ', 'PageName');
+    }
+
+    /**
+     * The prefix must not paper over a blank page set: 'PTZ/' . '' is 'PTZ/',
+     * which passes NotBlank, so a page set read from missing configuration would
+     * otherwise reach the gateway and fail there with no clear reason.
+     *
+     * @dataProvider blankPageSets
+     */
+    public function testFromPortalRejectsBlankPageSet(string $blank): void
+    {
+        try {
+            HostedPage::fromPortal($blank, 'PageName');
+            self::fail('Expected ValidationException was not thrown.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('pageSet', $e->getErrors());
+            self::assertStringContainsString('must not be empty', $e->getErrors()['pageSet']);
+        }
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function blankPageSets(): array
+    {
+        return [
+            'empty'                 => [''],
+            'whitespace'            => ['   '],
+            'prefix only'           => ['PTZ/'],
+            'lowercase prefix only' => ['ptz/'],
+            'prefix and whitespace' => ['PTZ/   '],
+        ];
+    }
+
+    /**
+     * With 3DS off the ExtendedData must not carry 3DS parameters: the gateway
+     * accepts that combination and skips authentication silently, and SpiRequest
+     * now rejects it — so building it here would make the service unusable.
+     */
+    public function testSaleWithoutThreeDsOmitsThreeDsParameters(): void
+    {
+        $this->httpClient->addResponse(200, ResponseFixture::load('sale_3ds_redirect'));
+
+        $this->service->sale(
+            totalAmount:         Money::of('10.00', 'USD'),
+            orderIdentifier:     'order-hpp-5',
+            page:                new HostedPage('PTZ/Set', 'Page'),
+            merchantResponseUrl: 'https://merchant.example.com/callback',
+            threeDSecure:        false,
+        );
+
+        $body = json_decode($this->httpClient->getLastRequest()['body'], true, 512, JSON_THROW_ON_ERROR);
+
+        self::assertFalse($body['ThreeDSecure']);
+        self::assertArrayNotHasKey('ThreeDSecure', $body['ExtendedData']);
+        self::assertSame('https://merchant.example.com/callback', $body['ExtendedData']['MerchantResponseUrl']);
+    }
+
+    /**
+     * Passing parameters while switching 3DS off is contradictory, so it is
+     * surfaced rather than silently resolved in one direction or the other.
+     */
+    public function testThreeDsParametersWithTheFlagOffAreRejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        $this->service->sale(
+            totalAmount:            Money::of('10.00', 'USD'),
+            orderIdentifier:        'order-hpp-6',
+            page:                   new HostedPage('PTZ/Set', 'Page'),
+            merchantResponseUrl:    'https://merchant.example.com/callback',
+            threeDSecure:           false,
+            threeDSecureParameters: new ThreeDSecure(),
+        );
     }
 
     /**
