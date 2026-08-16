@@ -14,26 +14,13 @@ Unofficial PHP SDK for the [PowerTranz](https://powertranz.com/) payment gateway
 
 ## Installation
 
-This package is not on Packagist yet. Install it from the repository by adding it as a VCS source in your `composer.json`:
-
-```json
-{
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/ylynfatt/powertranz-php-sdk.git"
-        }
-    ]
-}
-```
-
-Then require it:
-
 ```bash
-composer require ylynfatt/powertranz-php-sdk:dev-main
+composer require ylynfatt/powertranz-php-sdk
 ```
 
 The SDK ships with a built-in cURL client, so no additional HTTP dependency is required. To use your own PSR-18 client instead, see [Custom HTTP client](#custom-http-client).
+
+While the SDK is on a `0.x` line the public API may still change without a major version bump, so Composer's default caret constraint resolves to `0.1.*` only. Pin an exact version if you need it held still.
 
 ## Quick start
 
