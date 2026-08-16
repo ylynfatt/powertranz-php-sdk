@@ -92,16 +92,6 @@ abstract class SpiRequest implements JsonSerializable
     }
 
     /**
-     * Cross-field constraint: enabling 3DS obliges the caller to supply the
-     * parameters the gateway needs to run it.
-     *
-     * Without ExtendedData there is no MerchantResponseUrl, and without that
-     * PowerTranz has nowhere to post the authentication result — the cardholder
-     * completes the challenge in the iframe and control never returns. The
-     * gateway rejects such requests, so catching it locally turns an opaque
-     * remote failure into a named field error.
-     */
-    /**
      * Cross-field constraint: the gateway needs card data from exactly one place.
      *
      * Either the request carries a Source, or it carries hosted-page parameters
@@ -128,10 +118,39 @@ abstract class SpiRequest implements JsonSerializable
         }
     }
 
+    /**
+     * Cross-field constraint: the {@see $threeDSecure} flag and the parameters in
+     * {@see ExtendedData} must agree, in both directions.
+     *
+     * Flag on, parameters missing: without ExtendedData there is no
+     * MerchantResponseUrl, and without that PowerTranz has nowhere to post the
+     * authentication result — the cardholder completes the challenge in the
+     * iframe and control never returns. The gateway rejects such requests, so
+     * catching it locally turns an opaque remote failure into a named field
+     * error.
+     *
+     * Parameters supplied, flag off: this one the gateway happily accepts, which
+     * is what makes it dangerous. The flag is what switches authentication on;
+     * ExtendedData.ThreeDSecure alone is inert. The transaction processes as
+     * plain e-commerce — no challenge, no liability shift — while the caller,
+     * having configured 3DS, believes it ran. Nothing downstream reveals the
+     * difference, so it is rejected here.
+     */
     #[Assert\Callback]
     public function validateThreeDSecureParameters(ExecutionContextInterface $context): void
     {
         if (!$this->threeDSecure) {
+            if ($this->extendedData?->threeDSecure !== null) {
+                $context
+                    ->buildViolation(
+                        'ExtendedData.ThreeDSecure parameters were supplied but the ThreeDSecure flag is false, '
+                        . 'so the transaction would be sent without authentication. Set threeDSecure: true, or '
+                        . 'omit the parameters.',
+                    )
+                    ->atPath('threeDSecure')
+                    ->addViolation();
+            }
+
             return;
         }
 

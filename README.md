@@ -204,6 +204,8 @@ if ($result instanceof ThreeDSecureChallenge) {
 
 `iframe()` emits the wrapper PowerTranz documents, with the payload escaped for the `srcdoc` attribute. Use `render()` if you need the raw document to wrap yourself.
 
+> **Both halves are required.** The `threeDSecure` flag is what switches authentication on; `ExtendedData.ThreeDSecure` alone is inert. The gateway accepts parameters sent with a false flag and quietly processes a plain e-commerce sale — no challenge, no liability shift — so the SDK rejects the mismatch in either direction before the request leaves.
+
 **Step 2 — complete, in your `merchantResponseUrl` handler.** Parse the POST with `ThreeDSecureResult::fromCallback()`, then complete the payment within five minutes:
 
 ```php

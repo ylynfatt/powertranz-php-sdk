@@ -78,10 +78,11 @@ final class HostedPageService
             orderIdentifier:       $orderIdentifier,
             transactionIdentifier: $transactionIdentifier,
             threeDSecure:          $threeDSecure,
-            extendedData:          ExtendedData::forHostedPage(
-                merchantResponseUrl: $merchantResponseUrl,
-                hostedPage:          $page,
-                threeDSecure:        $threeDSecureParameters,
+            extendedData:          $this->buildExtendedData(
+                $merchantResponseUrl,
+                $page,
+                $threeDSecure,
+                $threeDSecureParameters,
             ),
             billingAddress:        $billingAddress,
         ));
@@ -110,12 +111,46 @@ final class HostedPageService
             orderIdentifier:       $orderIdentifier,
             transactionIdentifier: $transactionIdentifier,
             threeDSecure:          $threeDSecure,
-            extendedData:          ExtendedData::forHostedPage(
-                merchantResponseUrl: $merchantResponseUrl,
-                hostedPage:          $page,
-                threeDSecure:        $threeDSecureParameters,
+            extendedData:          $this->buildExtendedData(
+                $merchantResponseUrl,
+                $page,
+                $threeDSecure,
+                $threeDSecureParameters,
             ),
             billingAddress:        $billingAddress,
         ));
+    }
+
+    /**
+     * Build the ExtendedData for a hosted page, keeping it consistent with the
+     * top-level 3DS flag.
+     *
+     * A hosted page always needs the MerchantResponseUrl, with or without 3DS.
+     * What must not happen is 3DS parameters travelling alongside a false flag:
+     * the gateway accepts that combination and quietly skips authentication.
+     * With 3DS off the parameters are therefore omitted — except when the caller
+     * passed some explicitly, which is a contradiction worth surfacing rather
+     * than silently resolving, so they are passed through for
+     * {@see \PowerTranz\Model\Request\SpiRequest} to reject.
+     */
+    private function buildExtendedData(
+        string $merchantResponseUrl,
+        HostedPage $page,
+        bool $threeDSecure,
+        ?ThreeDSecure $threeDSecureParameters,
+    ): ExtendedData {
+        if ($threeDSecure) {
+            return ExtendedData::forHostedPage(
+                merchantResponseUrl: $merchantResponseUrl,
+                hostedPage:          $page,
+                threeDSecure:        $threeDSecureParameters,
+            );
+        }
+
+        return new ExtendedData(
+            merchantResponseUrl: $merchantResponseUrl,
+            threeDSecure:        $threeDSecureParameters,
+            hostedPage:          $page,
+        );
     }
 }
