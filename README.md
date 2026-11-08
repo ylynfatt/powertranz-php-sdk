@@ -94,15 +94,15 @@ $config = ConfigurationBuilder::create()
 $client = PowerTranzClient::fromConfiguration($config);
 ```
 
-The `Configuration` is used exactly as given — every field on it, including `logger` and `retryBaseDelay`, reaches the services. A `Configuration` can also go straight to the constructor:
+Every field on the `Configuration` reaches the services, `logger` and `retryBaseDelay` included. You can also pass one straight to the constructor:
 
 ```php
 $client = new PowerTranzClient($config);
 ```
 
-Because the `Configuration` already carries them, the `environment`, `timeout`, `connect_timeout`, `max_retries` and `logger` options are rejected when combined with one — set them on the `Configuration` instead. Transport options (`http_client`, `request_factory`, `stream_factory`) are still accepted.
+The `environment`, `timeout`, `connect_timeout`, `max_retries` and `logger` options throw if you combine them with a `Configuration`, since it already carries them. Set them on the `Configuration` instead. The transport options (`http_client`, `request_factory`, `stream_factory`) still work.
 
-To supply your own transport, pass anything implementing `PowerTranz\Http\HttpClientInterface` as the second argument. It is used verbatim, so retry behaviour is yours to compose — wrap it in `RetryMiddleware` yourself if you want the default policy. Passing `null` uses the built-in cURL client with retries enabled.
+For your own transport, pass anything implementing `PowerTranz\Http\HttpClientInterface` as the second argument. It's used as-is, so wrap it in `RetryMiddleware` yourself if you want retries. Passing `null` gives you the built-in cURL client with retries on.
 
 ### Custom HTTP client
 
@@ -389,21 +389,23 @@ composer install
 composer ci
 ```
 
-`composer ci` runs everything CI runs apart from the PHP version matrix. The individual steps:
+`composer ci` runs what CI runs, minus the PHP version matrix. The individual steps:
 
 | Command | What it does |
 | --- | --- |
 | `composer test` | PHPUnit suite |
 | `composer stan` | PHPStan level 8 over `src` and `examples` |
-| `composer stan:php82` | Re-runs the analysis as if on PHP 8.2, the oldest supported version |
+| `composer stan:php82` | Same analysis, targeting PHP 8.2, the oldest supported version |
 | `composer cs` | Reports code style drift without changing anything |
 | `composer cs:fix` | Applies style fixes |
 
-CI runs the suite on PHP 8.2 through 8.4, and additionally on 8.2 with the lowest dependency versions the constraints in `composer.json` allow.
+CI runs the suite on PHP 8.2, 8.3 and 8.4, plus a run on 8.2 against the lowest dependency versions `composer.json` allows. The 8.2 floor comes from `brick/money`, which needs `^8.2`.
 
-The 8.2 floor is set by `brick/money`, which requires `^8.2`.
+`composer cs` reports drift on most of the tree right now: the fixer and the committed style disagree about aligned `=`. That's why it isn't in `composer ci` or CI yet.
 
-`composer cs` currently reports drift on much of the tree — the fixer and the committed style disagree over aligned `=`. It is deliberately not part of `composer ci` or CI until that is settled one way or the other.
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for notable changes, including what breaks in each `0.x` minor.
 
 ## License
 
