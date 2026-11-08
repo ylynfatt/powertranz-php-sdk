@@ -46,6 +46,11 @@ use Psr\Log\LoggerInterface;
  *
  *   $client = PowerTranzClient::fromConfiguration($config);
  *
+ * The Configuration is used exactly as given — every field on it, including
+ * {@see Configuration::$logger} and {@see Configuration::$retryBaseDelay},
+ * reaches the services. It is not round-tripped through
+ * {@see ConfigurationBuilder}.
+ *
  * ## Service accessors
  *
  *   $client->spi->sale($saleRequest);
@@ -59,22 +64,102 @@ final class PowerTranzClient
     public readonly HostedPageService $hostedPage;
 
     /**
+     * Options that carry configuration, and so are meaningless when a
+     * pre-built {@see Configuration} is supplied instead of credentials.
+     */
+    private const CONFIG_OPTIONS = ['environment', 'timeout', 'connect_timeout', 'max_retries', 'logger'];
+
+    /**
+     * @param string|Configuration $powerTranzId Merchant id, or a pre-built
+     *        {@see Configuration} (in which case $powerTranzPassword must be omitted).
      * @param array{
      *   environment?:      Environment,
      *   timeout?:          int,
      *   connect_timeout?:  int,
      *   max_retries?:      int,
      *   logger?:           LoggerInterface,
-     *   http_client?:      PsrClientInterface,
+     *   http_client?:      PsrClientInterface|HttpClientInterface,
      *   request_factory?:  RequestFactoryInterface,
      *   stream_factory?:   StreamFactoryInterface,
      * } $options
      */
     public function __construct(
-        string $powerTranzId,
-        string $powerTranzPassword,
+        string|Configuration $powerTranzId,
+        string $powerTranzPassword = '',
         array $options = [],
     ) {
+        $config = $powerTranzId instanceof Configuration
+            ? self::adoptConfiguration($powerTranzId, $powerTranzPassword, $options)
+            : self::buildConfiguration($powerTranzId, $powerTranzPassword, $options);
+
+        $httpClient = self::resolveHttpClient($config, $options);
+
+        $this->spi          = new SpiService($httpClient, $config);
+        $this->transactions = new TransactionService($httpClient, $config);
+        $this->hostedPage   = new HostedPageService($this->spi);
+    }
+
+    /**
+     * Construct from a pre-built {@see Configuration} object.
+     *
+     * Useful in DI containers (Laravel service providers, Symfony DI, Drupal services).
+     *
+     * The Configuration is passed through untouched, so fields the
+     * {@see ConfigurationBuilder} cannot express — notably
+     * {@see Configuration::$retryBaseDelay} — are honoured.
+     *
+     * @param HttpClientInterface|null $httpClient A complete transport stack, used verbatim.
+     *        Pass null for the built-in cURL client wrapped in {@see RetryMiddleware}.
+     *        A client supplied here is NOT wrapped: retry behaviour is yours to compose.
+     */
+    public static function fromConfiguration(
+        Configuration $config,
+        ?HttpClientInterface $httpClient = null,
+    ): self {
+        return new self(
+            $config,
+            '',
+            $httpClient !== null ? ['http_client' => $httpClient] : [],
+        );
+    }
+
+    /**
+     * Use a caller-supplied Configuration as-is, rejecting options it would silently shadow.
+     *
+     * @param array<string, mixed> $options
+     */
+    private static function adoptConfiguration(
+        Configuration $config,
+        string $powerTranzPassword,
+        array $options,
+    ): Configuration {
+        if ($powerTranzPassword !== '') {
+            throw new \InvalidArgumentException(
+                'Pass credentials either as a Configuration or as id/password, not both.'
+            );
+        }
+
+        $shadowed = array_intersect(self::CONFIG_OPTIONS, array_keys($options));
+
+        if ($shadowed !== []) {
+            throw new \InvalidArgumentException(sprintf(
+                'These options cannot be combined with a Configuration, which already carries them: %s. '
+                . 'Set them on the Configuration instead.',
+                implode(', ', $shadowed),
+            ));
+        }
+
+        return $config;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     */
+    private static function buildConfiguration(
+        string $powerTranzId,
+        string $powerTranzPassword,
+        array $options,
+    ): Configuration {
         $builder = ConfigurationBuilder::create()
             ->withCredentials($powerTranzId, $powerTranzPassword);
 
@@ -98,43 +183,7 @@ final class PowerTranzClient
             $builder = $builder->withLogger($options['logger']);
         }
 
-        $config     = $builder->build();
-        $httpClient = self::resolveHttpClient($config, $options);
-
-        $this->spi          = new SpiService($httpClient, $config);
-        $this->transactions = new TransactionService($httpClient, $config);
-        $this->hostedPage   = new HostedPageService($this->spi);
-    }
-
-    /**
-     * Construct from a pre-built {@see Configuration} object.
-     *
-     * Useful in DI containers (Laravel service providers, Symfony DI, Drupal services).
-     *
-     * @param HttpClientInterface|null $httpClient Provide a custom HTTP client, or pass null
-     *                                             to use the built-in cURL client.
-     */
-    public static function fromConfiguration(
-        Configuration $config,
-        ?HttpClientInterface $httpClient = null,
-    ): self {
-        if ($httpClient === null) {
-            $httpClient = new RetryMiddleware(new CurlHttpClient($config), $config);
-        }
-
-        return new self(
-            $config->powerTranzId,
-            $config->powerTranzPassword,
-            // Pass the pre-built http client via options so the constructor uses it directly
-            // by re-constructing configuration from the already-built config values.
-            // Note: timeout/retries come from $config; the constructor will re-build them.
-            [
-                'environment'    => $config->environment,
-                'timeout'        => $config->timeout,
-                'connect_timeout' => $config->connectTimeout,
-                'max_retries'    => $config->maxRetries,
-            ],
-        );
+        return $builder->build();
     }
 
     /**
@@ -143,6 +192,12 @@ final class PowerTranzClient
     private static function resolveHttpClient(Configuration $config, array $options): HttpClientInterface
     {
         $psrClient = $options['http_client'] ?? null;
+
+        // An SDK-level client is a complete transport stack — honour it verbatim
+        // rather than wrapping it and silently doubling someone's retry policy.
+        if ($psrClient instanceof HttpClientInterface) {
+            return $psrClient;
+        }
 
         if ($psrClient instanceof PsrClientInterface) {
             $requestFactory = $options['request_factory'] ?? null;
