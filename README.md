@@ -405,6 +405,10 @@ The 8.2 floor is set by `brick/money`, which requires `^8.2`.
 
 `composer cs` currently reports drift on much of the tree — the fixer and the committed style disagree over aligned `=`. It is deliberately not part of `composer ci` or CI until that is settled one way or the other.
 
+## Changelog
+
+Notable changes are recorded in [CHANGELOG.md](CHANGELOG.md), including the breaking changes in each `0.x` minor and what to do about them.
+
 ## License
 
 This SDK is open-sourced software licensed under the [MIT license](LICENSE).
