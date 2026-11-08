@@ -1,0 +1,15 @@
+# Re-runs the level 8 analysis as if on PHP 8.1, the oldest version
+# composer.json supports.
+#
+# The test matrix does run on 8.1, but only exercises the lines the tests
+# reach, and never loads examples/ at all. This checks every line in src and
+# examples against 8.1 language and stdlib rules, so an 8.2+ feature cannot
+# reach a release that claims >=8.1.
+#
+# PHPStan 1.x has no --php-version flag; it is a config-only setting, hence
+# the separate file.
+includes:
+    - phpstan.neon
+
+parameters:
+    phpVersion: 80100

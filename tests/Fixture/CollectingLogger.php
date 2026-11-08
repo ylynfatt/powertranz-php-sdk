@@ -16,9 +16,18 @@ final class CollectingLogger extends AbstractLogger
     public array $records = [];
 
     /**
-     * @param array<mixed> $context
+     * Deliberately untyped parameters.
+     *
+     * composer.json allows psr/log ^1.1|^2.0|^3.0, and 1.x declares
+     * `log($level, $message, array $context = [])` with no parameter types. A
+     * typed override is an incompatible signature there and fatals on load, so
+     * the widest signature is the only one valid across all three majors.
+     *
+     * @param mixed                   $level
+     * @param string|\Stringable      $message
+     * @param array<mixed>            $context
      */
-    public function log(mixed $level, string|\Stringable $message, array $context = []): void
+    public function log($level, $message, array $context = []): void
     {
         $this->records[] = [
             'level'   => $level,

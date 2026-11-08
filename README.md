@@ -2,6 +2,7 @@
 
 Unofficial PHP SDK for the [PowerTranz](https://powertranz.com/) payment gateway — SPI transactions, 3-D Secure 2.x, tokenisation, and Hosted Payment Pages.
 
+[![CI](https://github.com/ylynfatt/powertranz-php-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/ylynfatt/powertranz-php-sdk/actions/workflows/ci.yml)
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.1-777bb4)](composer.json)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -382,10 +383,25 @@ POWERTRANZ_ID=your-id POWERTRANZ_PASSWORD=your-password php examples/simple_sale
 
 ```bash
 composer install
-vendor/bin/phpunit --testsuite Unit
-vendor/bin/phpstan analyse
-vendor/bin/php-cs-fixer fix
 ```
+
+```bash
+composer ci
+```
+
+`composer ci` runs everything CI runs apart from the PHP version matrix. The individual steps:
+
+| Command | What it does |
+| --- | --- |
+| `composer test` | PHPUnit suite |
+| `composer stan` | PHPStan level 8 over `src` and `examples` |
+| `composer stan:php81` | Re-runs the analysis as if on PHP 8.1, the oldest supported version |
+| `composer cs` | Reports code style drift without changing anything |
+| `composer cs:fix` | Applies style fixes |
+
+CI runs the suite on PHP 8.1 through 8.4, and additionally on 8.1 with the lowest dependency versions the constraints in `composer.json` allow.
+
+`composer cs` currently reports drift on much of the tree — the fixer and the committed style disagree over aligned `=`. It is deliberately not part of `composer ci` or CI until that is settled one way or the other.
 
 ## License
 

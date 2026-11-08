@@ -37,6 +37,25 @@
             "PowerTranz\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "test": "phpunit",
+        "stan": "phpstan analyse --no-progress",
+        "stan:php81": "phpstan analyse --no-progress --configuration=phpstan-php81.neon",
+        "cs": "php-cs-fixer fix --dry-run --diff",
+        "cs:fix": "php-cs-fixer fix",
+        "ci": [
+            "@test",
+            "@stan",
+            "@stan:php81"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the PHPUnit suite.",
+        "stan": "Run PHPStan at level 8 over src and examples.",
+        "stan:php81": "Re-run PHPStan as if on PHP 8.1, the oldest supported version.",
+        "cs": "Report code style drift without changing anything.",
+        "ci": "Everything CI runs, minus the PHP version matrix."
+    },
     "config": {
         "sort-packages": true,
         "preferred-install": "dist"

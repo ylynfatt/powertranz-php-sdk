@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A force-push to a PR branch makes the in-flight run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} (${{ matrix.dependencies }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One version failing should not hide the state of the others.
+      fail-fast: false
+      matrix:
+        # composer.json declares php >=8.1, so every supported version is tested.
+        php: ['8.1', '8.2', '8.3', '8.4']
+        dependencies: ['highest']
+        include:
+          # Lowest is pinned to the oldest supported PHP, which is where the
+          # oldest dependencies are actually expected to run. It caught
+          # psr/log 1.x's untyped LoggerInterface signature.
+          - php: '8.1'
+            dependencies: 'lowest'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          # ext-curl is a hard requirement in composer.json (CurlHttpClient).
+          extensions: curl
+          coverage: none
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+        with:
+          # The committed lock is resolved on the newest PHP, so it cannot be
+          # reused across the matrix. Resolving per leg is what makes the
+          # declared constraint ranges meaningful.
+          dependency-versions: ${{ matrix.dependencies }}
+
+      - name: Run tests
+        run: vendor/bin/phpunit
+
+  static-analysis:
+    name: PHPStan (level 8)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl
+          coverage: none
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+
+      # Covers src and examples, per phpstan.neon. The examples are in scope
+      # deliberately: they have caught real breakage on model changes.
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress
+
+  lowest-php-syntax:
+    name: PHP 8.1 compatibility
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: curl
+          coverage: none
+
+      - name: Install dependencies
+        uses: ramsey/composer-install@v3
+
+      # The test matrix runs the code on 8.1, but only the paths the tests
+      # reach, and never loads examples/. This checks every line in src and
+      # examples against 8.1 rules. PHPStan 1.x has no --php-version flag, so
+      # the setting lives in its own config file.
+      - name: Analyse as PHP 8.1
+        run: vendor/bin/phpstan analyse --no-progress --configuration=phpstan-php81.neon
