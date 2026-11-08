@@ -93,7 +93,15 @@ $config = ConfigurationBuilder::create()
 $client = PowerTranzClient::fromConfiguration($config);
 ```
 
-> **Note:** `fromConfiguration()` currently forwards only the environment, timeouts, and retry count. A logger or custom retry delay set on the `Configuration` is not carried over — pass `logger` through the constructor options instead.
+The `Configuration` is used exactly as given — every field on it, including `logger` and `retryBaseDelay`, reaches the services. A `Configuration` can also go straight to the constructor:
+
+```php
+$client = new PowerTranzClient($config);
+```
+
+Because the `Configuration` already carries them, the `environment`, `timeout`, `connect_timeout`, `max_retries` and `logger` options are rejected when combined with one — set them on the `Configuration` instead. Transport options (`http_client`, `request_factory`, `stream_factory`) are still accepted.
+
+To supply your own transport, pass anything implementing `PowerTranz\Http\HttpClientInterface` as the second argument. It is used verbatim, so retry behaviour is yours to compose — wrap it in `RetryMiddleware` yourself if you want the default policy. Passing `null` uses the built-in cURL client with retries enabled.
 
 ### Custom HTTP client
 
