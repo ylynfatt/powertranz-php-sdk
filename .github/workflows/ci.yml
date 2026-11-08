@@ -22,14 +22,16 @@ jobs:
       # One version failing should not hide the state of the others.
       fail-fast: false
       matrix:
-        # composer.json declares php >=8.1, so every supported version is tested.
-        php: ['8.1', '8.2', '8.3', '8.4']
+        # composer.json declares php >=8.2, so every supported version is
+        # tested. 8.2 is the floor because brick/money requires ^8.2 — the
+        # manifest claimed >=8.1 until this matrix proved it uninstallable.
+        php: ['8.2', '8.3', '8.4']
         dependencies: ['highest']
         include:
           # Lowest is pinned to the oldest supported PHP, which is where the
           # oldest dependencies are actually expected to run. It caught
           # psr/log 1.x's untyped LoggerInterface signature.
-          - php: '8.1'
+          - php: '8.2'
             dependencies: 'lowest'
 
     steps:
@@ -46,9 +48,10 @@ jobs:
       - name: Install dependencies
         uses: ramsey/composer-install@v3
         with:
-          # The committed lock is resolved on the newest PHP, so it cannot be
-          # reused across the matrix. Resolving per leg is what makes the
-          # declared constraint ranges meaningful.
+          # composer.lock is gitignored (this is a library, so consumers
+          # resolve their own), meaning there is nothing to install from and
+          # every leg resolves fresh. That is what makes the declared
+          # constraint ranges meaningful rather than untested prose.
           dependency-versions: ${{ matrix.dependencies }}
 
       - name: Run tests
@@ -70,6 +73,10 @@ jobs:
 
       - name: Install dependencies
         uses: ramsey/composer-install@v3
+        with:
+          # Explicit because the action defaults to `locked`, and there is no
+          # committed lock to install from.
+          dependency-versions: highest
 
       # Covers src and examples, per phpstan.neon. The examples are in scope
       # deliberately: they have caught real breakage on model changes.
@@ -77,7 +84,7 @@ jobs:
         run: vendor/bin/phpstan analyse --no-progress
 
   lowest-php-syntax:
-    name: PHP 8.1 compatibility
+    name: PHP 8.2 compatibility
     runs-on: ubuntu-latest
 
     steps:
@@ -92,10 +99,17 @@ jobs:
 
       - name: Install dependencies
         uses: ramsey/composer-install@v3
+        with:
+          # Explicit because the action defaults to `locked`, and there is no
+          # committed lock to install from.
+          dependency-versions: highest
 
-      # The test matrix runs the code on 8.1, but only the paths the tests
+      # The test matrix runs the code on 8.2, but only the paths the tests
       # reach, and never loads examples/. This checks every line in src and
-      # examples against 8.1 rules. PHPStan 1.x has no --php-version flag, so
+      # examples against 8.2 rules. PHPStan 1.x has no --php-version flag, so
       # the setting lives in its own config file.
-      - name: Analyse as PHP 8.1
-        run: vendor/bin/phpstan analyse --no-progress --configuration=phpstan-php81.neon
+      #
+      # This checks language rules only, not whether the dependency tree is
+      # installable on the floor — that is what the matrix's oldest leg does.
+      - name: Analyse as PHP 8.2
+        run: vendor/bin/phpstan analyse --no-progress --configuration=phpstan-php82.neon

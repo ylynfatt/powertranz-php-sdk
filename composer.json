@@ -5,7 +5,7 @@
     "license": "MIT",
     "keywords": ["payment", "powertranz", "3ds", "gateway", "caribbean", "tokenisation"],
     "require": {
-        "php": ">=8.1",
+        "php": ">=8.2",
         "ext-curl": "*",
         "brick/money": "^0.11.2",
         "psr/http-client": "^1.0",
@@ -40,19 +40,19 @@
     "scripts": {
         "test": "phpunit",
         "stan": "phpstan analyse --no-progress",
-        "stan:php81": "phpstan analyse --no-progress --configuration=phpstan-php81.neon",
+        "stan:php82": "phpstan analyse --no-progress --configuration=phpstan-php82.neon",
         "cs": "php-cs-fixer fix --dry-run --diff",
         "cs:fix": "php-cs-fixer fix",
         "ci": [
             "@test",
             "@stan",
-            "@stan:php81"
+            "@stan:php82"
         ]
     },
     "scripts-descriptions": {
         "test": "Run the PHPUnit suite.",
         "stan": "Run PHPStan at level 8 over src and examples.",
-        "stan:php81": "Re-run PHPStan as if on PHP 8.1, the oldest supported version.",
+        "stan:php82": "Re-run PHPStan as if on PHP 8.2, the oldest supported version.",
         "cs": "Report code style drift without changing anything.",
         "ci": "Everything CI runs, minus the PHP version matrix."
     },

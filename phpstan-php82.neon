@@ -1,0 +1,21 @@
+# Re-runs the level 8 analysis as if on PHP 8.2, the oldest version
+# composer.json supports.
+#
+# The test matrix does run on 8.2, but only exercises the lines the tests
+# reach, and never loads examples/ at all. This checks every line in src and
+# examples against 8.2 language and stdlib rules, so an 8.3+ feature cannot
+# reach a release that claims >=8.2.
+#
+# Note what this does NOT check: it validates source against language rules,
+# not dependency platform constraints. The floor must match composer.json's
+# `php` constraint AND be installable with the dependency tree — brick/money
+# requires ^8.2, which is what sets the floor here. Only a real install on the
+# oldest version catches that, which is the matrix's job.
+#
+# PHPStan 1.x has no --php-version flag; it is a config-only setting, hence
+# the separate file.
+includes:
+    - phpstan.neon
+
+parameters:
+    phpVersion: 80200
