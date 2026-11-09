@@ -7,6 +7,16 @@ While this package is below 1.0.0, breaking changes go in minor bumps.
 Composer reads `^0.1.0` as `>=0.1.0 <0.2.0`, so you pick up a new minor
 deliberately rather than on a `composer update`.
 
+## [0.2.1] - 2026-11-08
+
+Documentation only. No code changed, so there's nothing to do when upgrading
+from 0.2.0.
+
+- The README now has a Verification status section saying which flows have
+  been run against a live gateway and which have only unit tests. The 3-D
+  Secure path is sandbox-verified. Tokenisation and Hosted Payment Pages are
+  not, and the sections covering them say so.
+
 ## [0.2.0] - 2026-11-08
 
 Two install constraints got narrower here. If `composer require` or
@@ -104,6 +114,7 @@ Pages and recurring billing.
 
 Releases before 0.2.0 are summarised from git history.
 
+[0.2.1]: https://github.com/ylynfatt/powertranz-php-sdk/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ylynfatt/powertranz-php-sdk/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ylynfatt/powertranz-php-sdk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ylynfatt/powertranz-php-sdk/releases/tag/v0.1.0
