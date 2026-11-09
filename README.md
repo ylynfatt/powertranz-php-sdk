@@ -8,6 +8,22 @@ Unofficial PHP SDK for the [PowerTranz](https://powertranz.com/) payment gateway
 
 > This is an independent, community-maintained SDK. It is not affiliated with, sanctioned by, or supported by PowerTranz. For official support, contact PowerTranz directly.
 
+## Verification status
+
+The flows here haven't had equal testing.
+
+| Flow | Status |
+| --- | --- |
+| 3-D Secure 2.x: `spi/sale` with `threeDSecure`, the `MerchantResponseUrl` callback, then `spi/payment` | Run end to end against the PowerTranz sandbox with a test card |
+| Sale and authorize without 3DS | Unit-tested only |
+| Capture, refund, void | Unit-tested only |
+| Tokenisation via `riskManagement()` | Unit-tested only. No token has been issued by a real gateway and replayed as a `Source.Token` |
+| Hosted Payment Pages | Unit-tested only. No HPP transaction has been run end to end |
+
+The request and response shapes come from the PowerTranz API 1.3 reference and the official Postman collection, and were checked against both. Unit tests cover those shapes. They don't cover how the gateway actually behaves.
+
+Three bugs in the 3DS code only showed up once it ran against a sandbox account: a dropped `IsoResponseCode` on the challenge object, a callback that arrives form-encoded rather than as JSON, and unknown response codes getting coerced to `05`. The reference docs and the unit tests missed all three. Run the unverified flows against your own sandbox before using them in production.
+
 ## Requirements
 
 - PHP 8.2 or higher
@@ -260,6 +276,8 @@ error_log("gateway returned {$payment->isoResponseCodeValue}");
 
 HPP keeps card entry off your servers, reducing your PCI DSS scope. There is no separate HPP endpoint — it is an ordinary `spi/sale` or `spi/auth` carrying hosted-page parameters and **no card source**. The cardholder types their card into the gateway's iframe.
 
+> **Not verified against a live gateway.** The request shape matches the API reference and has unit tests, but no HPP transaction has been run end to end. See [Verification status](#verification-status).
+
 ```php
 use PowerTranz\Model\Request\Parts\HostedPage;
 
@@ -284,6 +302,8 @@ From there the flow is identical to 3DS: the cardholder pays in the iframe, Powe
 ## Tokenisation
 
 Tokenising happens on **`riskManagement()`** — a non-financial request that moves no money. `Tokenize` is not accepted on `sale` or `authorize`.
+
+> **Not verified against a live gateway.** `Tokenize` placement matches the API reference and is pinned by tests, but no token has been issued by a real gateway and replayed as a `Source.Token`. See [Verification status](#verification-status).
 
 ```php
 $result = $client->spi->riskManagement(new RiskManagementRequest(
